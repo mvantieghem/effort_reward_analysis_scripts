@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+4_brain_motion_QC/QA_motion_general/*
+6_brain_preproc_level1_by_run/preproc_lev1_fsfs/*
+6_brain_preproc_level1_by_run/onset_files/*
+6_brain_preproc_level1_by_run/onset_files_backup/*
+7_brain_level2_combine_runs/lev2_fsfs/*
+8_brain_ROI_analysis/pulled_betas/*
