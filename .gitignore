@@ -13,3 +13,5 @@
 6_brain_preproc_level1_by_run/onset_files_backup/
 7_brain_level2_combine_runs/lev2_fsfs/
 8_brain_ROI_analysis/pulled_betas/
+10_planned_analyses/brms_models/results_archived/
+10_planned_analyses/brms_models/preregistration_model_results/
