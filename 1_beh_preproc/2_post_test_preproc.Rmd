@@ -1,0 +1,192 @@
+---
+title: "post-test behavior"
+author: "Michelle Vantieghem"
+date: "Nov 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+This file is not fun, first we match all of the different backups to find the most amount of data. 
+
+# load in cleaned behavior task data, so we know which subjects to pull post-test data
+```{r}
+library(tidyverse)
+load("../../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_filtered_usable_with_demo.Rdata")
+
+sublist_task <- unique(df_by_run_usable_beh$SUBJECTID)
+length(sublist_task) # 178 subjects actually have usable effort data.
+```
+
+# get post-test data from multiple possible locations
+
+1. my backup that i stopped updating.
+```{r}
+pt_files1 <- list.files(path = "../../behavioral_data/4_post_test_data/raw_data/", pattern = "csv")
+length(pt_files1)
+
+sublist_pt1 <- paste0("PA", substr(pt_files1, 1, 3))
+```
+
+2. Lisa's task data folder
+```{r}
+pt_files2 <- list.files(path = "../../behavioral_data/LG_backups/effort_4_post/", pattern = "csv")
+length(pt_files2)
+
+sublist_pt2 <- paste0("PA", substr(pt_files2, 1, 3))
+head(sublist_pt2)
+
+```
+
+3. dropbox (checking raw backup, but not needed)
+```{r, eval = F, include = F, echo = F}
+pt_files3 <- list.files(path = "/Users/michellevantieghem2/Dropbox/Effort_Reward_Game/data/4_effort_reward_post_test/PACCT/", pattern = "csv")
+length(pt_files3)
+
+sublist_pt3 <- paste0("PA", substr(pt_files3, 1, 3))
+head(sublist_pt3)
+```
+
+## find matching files 
+```{r}
+# 173 files match between Lisa's backup and mine. 
+in_pt2_list <- sublist_task[sublist_task %in% sublist_pt2]
+length(in_pt2_list)
+
+# there are 5 additional files in Lisa's folder that aren't in mine. 
+#These subjects all have effort data data, were not backed up from dropbox but the data were backed up by Lisa! 
+not_in_pt2_list <- sublist_task[!sublist_task %in% sublist_pt2]
+not_in_pt2_list
+length(not_in_pt2_list)
+
+# There are no files in my folder that aren't in Lisa's
+in_my_list <- not_in_pt2_list[not_in_pt2_list %in% sublist_pt1]
+length(in_my_list)
+
+#in_dropbox_list <- not_in_pt2_list[not_in_pt2_list %in% sublist_pt3]
+#length(in_dropbox_list)
+```
+
+# read in post-test data
+using lisa's folder since it has 173 out of 178
+assuming remaining 5 subbjects never completed the post-test questionnaire. 
+```{r}
+filepath <- "../../behavioral_data/LG_backups/effort_4_post/"
+
+pt_files2 <- list.files(path = filepath, pattern = "csv")
+
+pt.data.list <- list() 
+for(i in pt_files2){
+  file <- paste0(filepath, i)
+  # assign data frame for each subject 
+  data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+  data.file <- data.frame(data.file)
+  # add data for each subject to list of data frames 
+  pt.data.list[[i]] <- data.file
+}
+
+#head(pt.data.list)
+length(pt.data.list)
+save(pt.data.list, file = "../../behavioral_data/4_post_test_data/compiled/compiled_post_test_data_long_format_list.Rdata")
+```
+
+
+# now load this..
+1] How much fun did you have playing the game?                                         
+[2] How sleepy did you feel during the game?                                            
+[3] How motivated did you feel during the game?                                         
+[4] How frustrated did you feel during the game?                                        
+[5] During the Hard Task:  how much effort did it take ? (how hard did you have to work)
+[6] During the Easy Task: how much effort did it take ? (how hard did you have to work)?
+[7] how did you feel when you won a lot of coins?                                       
+[8] how  did you feel when you did not win a lot of coins that you earned?      
+[9] Sometimes, even when you filled up the green bar, you didn't get coins. How often did this happen?
+[10] How much control did you feel like you had over winning the coins?                                
+
+```{r}
+
+cumulative_data <- data.frame()
+
+for (m in 1:length(pt.data.list)){
+
+  filename <- names(pt.data.list)[m]
+  SUBJECTID <- paste0("PA", substr(filename, 1, 3))
+  # get data frame out...
+  df <- data.frame(pt.data.list[[m]])
+  # only keep post-test if their data is usable
+#  if (SUBJECTID %in% sublist_task){
+      print(SUBJECTID)
+      if(nrow(df) == 8){
+        df <- df %>% 
+        dplyr::select(Questions, rating.response)
+        # for all subjects, we got these 8 measures
+        fun <- df$rating.response[1]
+        sleepy <- df$rating.response[2]
+        motivated <- df$rating.response[3]
+        frustrated <- df$rating.response[4]
+        hard_effort <- df$rating.response[5]
+        easy_effort <- df$rating.response[6]
+        win_feeling <- df$rating.response[7]
+        lose_feeling <- df$rating.response[8]
+          perceived_reinforce <- NA
+        perceived_control <- NA
+    } else if (nrow(df) > 8){
+          if("rating3.response" %in% names(df)){
+              df <- df %>% 
+              dplyr::select(Questions, rating.response, rating3.response)
+              # for all subjects, we got these 8 measures
+              fun <- df$rating.response[1]
+              sleepy <- df$rating.response[2]
+              motivated <- df$rating.response[3]
+              frustrated <- df$rating.response[4]
+              hard_effort <- df$rating.response[5]
+              easy_effort <- df$rating.response[6]
+              win_feeling <- df$rating.response[7]
+              lose_feeling <- df$rating.response[8]
+              perceived_reinforce <- df$rating3.response[9]
+              perceived_control <- df$rating3.response[10]
+          } else {
+               df <- df %>% 
+                    dplyr::select(Questions, rating.response)
+                # for all subjects, we got these 8 measures
+                fun <- df$rating.response[1]
+                sleepy <- df$rating.response[2]
+                motivated <- df$rating.response[3]
+                frustrated <- df$rating.response[4]
+                hard_effort <- df$rating.response[5]
+                easy_effort <- df$rating.response[6]
+                win_feeling <- df$rating.response[7]
+                lose_feeling <- df$rating.response[8]
+                perceived_reinforce <- df$rating.response[9]
+                perceived_control <- df$rating.response[10]
+          }
+    } 
+     # cumulate average data for the subject. 
+      subdata <- data.frame(SUBJECTID, fun, sleepy, motivated, frustrated, hard_effort, easy_effort, win_feeling, lose_feeling, perceived_reinforce, perceived_control)
+      cumulative_data <- rbind(cumulative_data, subdata)
+}
+
+ 
+head(cumulative_data)
+nrow(cumulative_data)
+# there are several duplicates.
+length(unique(cumulative_data$SUBJECTID))
+list_duplicates <- which(duplicated(cumulative_data[,1]),)
+# now remove them
+cumulative_data2 <- cumulative_data[-c(list_duplicates),]
+nrow(cumulative_data2)
+length(unique(cumulative_data2$SUBJECTID))
+```
+
+```{r}
+# rename and save
+post_test_df <- cumulative_data2
+save(post_test_df, file = "../../behavioral_data/4_post_test_data/compiled/compiled_cleaned_post_test_data.Rdata")
+
+```

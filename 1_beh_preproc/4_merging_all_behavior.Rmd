@@ -1,0 +1,98 @@
+---
+title: "merging  finger-tapping, effort task, and post-test"
+author: "Michelle.VanTieghem"
+date: "6/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# load data
+## effort task
+before excluding any data! combining it all.
+```{r}
+library(tidyverse)
+load( "../../behavioral_data/3_Effort_task_data/compiled/compiled_effort_scan_version_all_runs.Rdata")
+
+# no duplicated rows! 
+run_check <- behavior_run_data %>%
+  group_by(SUBJECTID) %>%
+  summarize(N_runs = n()) %>%
+  filter(N_runs > 2)
+run_check
+
+names(behavior_run_data)
+```
+
+## post-test data: 
+generated: 3_post_test_preproc.Rmd
+format: wide version, 1 row per subj.
+```{r}
+load("../../behavioral_data/4_post_test_data/compiled/compiled_cleaned_post_test_data.Rdata")
+
+identical(nrow(post_test_df), length(unique(post_test_df$SUBJECTID)))
+```
+
+## finger tapping data 
+generated: 4_finger_tapping_preproc.Rmd
+format: wide version, 1 row per subj
+```{r}
+load("../../behavioral_data/1_finger_tapping_data/compiled/compiled_cleaned_finger_tapping_data.Rdata")
+names(finger_tapping_df)[1] <- "SUBJECTID"
+identical(nrow(finger_tapping_df), length(unique(finger_tapping_df$SUBJECTID)))
+
+```
+
+# merge together
+```{r}
+beh_master <- merge(behavior_run_data, post_test_df,  by = "SUBJECTID", all = T)
+beh_master <- merge(beh_master, finger_tapping_df, by = "SUBJECTID", all = T)
+
+sum(beh_master$SUBJECTID == "PA006")
+```
+
+## are any kids missing post-test data? no! 
+```{r}
+beh_wide_check <- beh_master %>%
+  group_by(SUBJECTID) %>%
+  summarize(ft_version = ft_version[1], 
+            fingers = fingers[1],
+            handedness = handedness [1], 
+            thumb_key_count = thumb_key_count[1], 
+            fun = fun[1], 
+            perceived_control = perceived_control[1])
+# no one is missing overall post-test
+sum(is.na(beh_wide_check$fun))
+
+# 13 subjects are missing the updated post-test.
+sum(is.na(beh_wide_check$perceived_control))
+```
+
+## are any kids missing finger-tapping data? n
+
+```{r}
+sum(is.na(beh_wide_check$thumb_key_count))
+
+
+# 18 subjects are missing handedness
+summary(as.factor(beh_wide_check$handedness))
+
+# and 2 subjects had pointer/pinky
+summary(as.factor(beh_wide_check$fingers))
+
+nrow(beh_wide_check)
+nrow(beh_master)
+```
+
+
+# save the combined file
+```{r}
+save(beh_master, file = "../../behavioral_data/combined_behavior_master/combined_effort_ft_pt_behavior_by_run_all_data.Rata")
+
+```

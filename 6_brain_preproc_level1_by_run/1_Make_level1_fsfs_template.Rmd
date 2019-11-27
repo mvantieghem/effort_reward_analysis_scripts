@@ -1,0 +1,111 @@
+---
+title: "level 1 template"
+author: "Michelle Vantieghem"
+date: "Oct 4, 2019 "
+output:
+    html_document:
+        toc: yes
+        toc_float:
+            smooth_scroll: true
+            collapsed: false
+        df_print: paged
+        number_sections: false
+---
+updated October 3 to create a single level1 model that can be used for all possibel contrasts
+with preprocessing included, so motion regression correction will be carried out 
+blank onsets were changes to 000 so warning: some contrasts will be zeros in some subjecst.
+
+# Make your level1 fsf template in the FEAT GUI 
+### Script is saved in template_lev1_fsf 
+### This script will run preprocessing and level1 statistics on each run
+
+# Lower-level analysis 
+## Data
+#### inputs should be your bold files 
+#### check number of TRs is correct, and length of TR is correct 
+#### choose output directory to save lev1_run.feat 
+
+## Pre-stats
+#### No alternative ref image 
+#### Motion correction: mcflirt
+#### B0 unwarping -- YES
+fieldmap = PAXXX_fieldmap_rads \
+fieldmap mag = PAxxx_fieldmap_mag_brain \
+effective EPI echo spacing = 0.52 ms \
+EPI TE = 30 ms \
+unwarp direction = y \
+% signal loss threshold = 10 \
+#### Slice timing: none
+#### BET brain extraction -yes 
+#### Spatial smoothing FWHM 6 
+#### Intensity normalization - no
+#### Highpass filter- yes
+
+## Registration
+#### Main structural image with normal search BBR
+#### standard space with normal search 12 DOF, non-linear, warp resolution 10 (default)
+
+## Stats 
+#### yes - use FILM prewhitening 
+#### Standard + Extended motion 
+#### include additional confound EVs - confound.txt file 
+
+### Full Model Setup
+#### EVlist:
+```{r}
+# create key for numbered EVs
+EV_list <- c("HardChoice", "EasyChoice", "HardEffort", "EasyEffort", "HardReward", "HardSetback", "EasyReward", "EasySetback", "Missed") # all possible EVs
+EV_number <- c(1:9)
+EV_key <- data.frame(EV_list, EV_number)
+EV_key
+```
+
+
+#### copes
+```{r}
+
+# get list of contrasts
+cope_list <-  c("HardChoice", "EasyChoice", "HardEffort", "EasyEffort", "HardReward", "HardSetback", "EasyReward", "EasySetback", "Missed", # the 9 EVs alone
+               "allChoices", "Hard-EasyChoice", "allEffort", "Hard-EasyEffort", # choice and effort contrasts
+               "allFB",  "RewardFB", "SetbackFB", "Reward-SetbackFB", "HardFB", "EasyFB", "Hard-EasyFB", # FB main effects of reward/setback and easy/hard
+               "HardReward-HardSetback", "EasyReward-EasySetback", "HardReward-EasyReward", "HardSetback-EasySetback") # FB interaction of reward/setback x easy/hard
+cope_number <- c(1:length(cope_list))
+cope_key <- data.frame(cope_list, cope_number)
+
+cope_key
+```
+
+#### cope matrix 
+```{r}
+cope_mat2 <- data.frame("HardChoice" = c(1, 0, 0, 0, 0, 0, 0, 0, 0), 
+                        "EasyChoice"= c(0, 1, 0, 0, 0, 0, 0, 0, 0),
+                        "HardEffort"= c(0, 0, 1, 0, 0, 0, 0, 0, 0),
+                        "EasyEffort"= c(0, 0, 0, 1, 0, 0, 0, 0, 0), 
+                        "HardReward"= c(0, 0, 0, 0, 1, 0, 0, 0, 0), 
+                        "HardSetback"= c(0, 0, 0, 0, 0, 1, 0, 0, 0),
+                        "EasyReward"= c(0, 0, 0, 0, 0, 0, 1, 0, 0),
+                        "EasySetback"= c(0, 0, 0, 0, 0, 0, 0, 1, 0), 
+                        "Missed"= c(0, 0, 0, 0, 0, 0, 0, 0, 1), # the 9 EVs alone
+                       "allChoices"= c(1, 1, 0, 0, 0, 0, 0, 0, 0),
+                        "Hard-EasyChoice"= c(1, -1, 0, 0, 0, 0, 0, 0, 0),
+                       "allEffort"= c(0, 0, 1, 1, 0, 0, 0, 0, 0),
+                       "Hard-EasyEffort"= c(0, 0, 1, -1, 0, 0, 0, 0, 0), # choice and effort contrasts
+                       "allFB"= c(0, 0, 0, 0, 1, 1, 1, 1, 0), 
+                       "RewardFB"= c(0, 0, 0, 0, 1, 0, 1, 0, 0), 
+                       "SetbackFB"= c(0, 0, 0, 0, 0, 1, 0, 1, 0),
+                       "Reward-SetbackFB"= c(0, 0, 0, 0, 1, -1, 1, -1, 0), 
+                       "HardFB"= c(0, 0, 0, 0, 1, 1,  0, 0, 0),
+                       "EasyFB"= c(0, 0, 0, 0, 0, 0, 1, 1, 0), 
+                       "Hard-EasyFB"= c(0, 0, 0, 0, 1, 1, -1, -1, 0), # FB main effects of reward/setback and easy/hard
+                       "HardReward-HardSetback"= c(0, 0, 0, 0, 1, -1, 0, 0, 0), 
+                       "EasyReward-EasySetback"= c(0, 0, 0, 0, 0, 0, 1, -1, 0),
+                       "HardReward-EasyReward"= c(0, 0, 0, 0, 1, 0, -1, 0, 0),
+                       "HardSetback-EasySetback"= c(0, 0, 0, 0, 0, 1, 0, -1, 0)) # FB interaction of reward/setback x easy/hard
+
+final_cope_mat <- t(cope_mat2)
+final_cope_mat
+write.table(final_cope_mat, file = "level1_cope_matrix.txt", row.names = F, col.names = F)
+```
+
+# Post-stats 
+### none (no thresholding needed for single subject, single run data)

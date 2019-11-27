@@ -1,0 +1,225 @@
+---
+title: "organizing effort task data"
+author: "Michelle.VanTieghem"
+date: "Nov 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes
+ updated on Jan 29, 2019 to calculate % actual reinforcement per subject for pos vs neg \
+updated on March 25, 2019 to include ALL DATA COLLECTED EVER \
+ updated April 3, 2019 to make sure reinforcement rate is based on only effort trials that were successful! \
+updated November 26, 2019 to record version of task (inside or out of scanner) based on naming of file \
+this is an imperfect measure, but better than nothing. \
+
+```{r}
+library(stringr)
+library(tidyverse)
+library(ggplot2)
+```
+
+## read files into R 
+```{r}
+filepath <- "../../behavioral_data/3_effort_task_data/raw_scan_version/"
+filelist <- list.files(filepath, pattern = "csv")
+length(filelist) # 
+
+data.list <- list()  
+
+for(i in filelist){
+  file <- paste0(filepath, i)
+  # assign data frame for each subject 
+  data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+ data.file <- data.frame(data.file)
+  # add data for each subject to list of data frames 
+  data.list[[i]] <- data.file
+}
+length(data.list) # 367 after removing all duplicate runs! 
+```
+
+# Make a dataframe with data collapsed by run 
+```{r}
+cumulative_data <- data.frame()
+for (m in 1:length(data.list)){
+  df <- data.frame(data.list[[m]])
+  # GET RUN NUMBER AND SUBJECTID FROM FILE NAME - NOT FILE CONTENTS
+  # BECAUSE FILE NAMES WERE FIXED FOR TYPOS
+  filename <- names(data.list)[m]
+  # GET VERSION based on name of file...
+  task_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
+
+  SUBJECTID <- substr(filename, 1, 5)
+  filename2 <- unlist(strsplit(filename, "_"))
+  Run_number <- filename2[2]
+  # GET REST OF INFO FROM ACTUAL DATA
+   date <- df$date[1]
+   N_trials <- nrow(df)  
+    choices <- ifelse(df$Effort_Choice == "Easy", 0, 
+                      ifelse(df$Effort_Choice == "Hard", 1, NA))
+    # Response rate
+    N_choices_missed <-  sum(is.na(choices))
+    N_choices_resp <-  N_trials - N_choices_missed
+    
+    # hard vs. easy overall 
+    N_choices_hard <- sum(choices, na.rm = T)
+    N_choices_easy <- N_choices_resp - N_choices_hard
+    N_prop_hard <- N_choices_hard/ N_choices_resp
+    
+    # Effort task successful? accuracy on effort tasks.
+    N_accurate <- sum(df$Accuracy, na.rm = T)
+    Prop_accurate <- N_accurate/N_choices_resp
+    N_accurate_hard <- sum(df$Accuracy[df$Effort_Choice == "Hard"], na.rm = T)
+    N_accurate_easy <- sum(df$Accuracy[df$Effort_Choice == "Easy"], na.rm = T)
+    Prop_accurate_hard <- N_accurate_hard / N_choices_hard
+    Prop_accurate_easy <-  N_accurate_easy / N_choices_easy
+    
+    N_tooslow <- sum(ifelse(df$Accuracy == 0, 1, 0), na.rm = T)
+    Prop_tooslow <- N_tooslow/ N_choices_resp
+    N_tooslow_hard <- sum(ifelse(df$Accuracy[df$Effort_Choice == "Hard"] == 0, 1, 0), na.rm = T)
+    N_tooslow_easy <- sum(ifelse(df$Accuracy[df$Effort_Choice == "Easy"] == 0, 1, 0), na.rm = T)
+    Prop_tooslow_hard <- N_tooslow_hard / N_choices_hard
+    Prop_tooslow_easy <- N_tooslow_easy / N_choices_easy 
+      
+    # reinforcement by effort and overall 
+    N_reward_trials <- sum(df$Reward_received, na.rm = T)
+    N_setback_trials <- N_accurate - N_reward_trials
+    # reinforcement only occured for trials where they were accurate! 
+    Reinforce_rate <- N_reward_trials/N_accurate
+    
+    N_hard_reward <- sum(df$Reward_received[df$Effort_Choice == "Hard"], na.rm = T)
+    N_hard_setback <- N_accurate_hard - N_hard_reward
+    Reinforce_hard <- N_hard_reward / N_accurate_hard
+    
+    N_easy_reward <- sum(df$Reward_received[df$Effort_Choice == "Easy"], na.rm = T)
+    N_easy_setback <- N_accurate_easy - N_easy_reward 
+    Reinforce_easy <- N_easy_reward/ N_accurate_easy
+    
+  
+    # cumulate average data for the subject. 
+    subdata <- data.frame(SUBJECTID, task_version, date, Run_number,
+                          N_trials, N_choices_missed, N_choices_resp,
+                          N_choices_hard, N_choices_easy, N_prop_hard,
+                          N_accurate, N_accurate_hard, N_accurate_easy,
+                          Prop_accurate, Prop_accurate_hard, Prop_accurate_easy,
+                          N_tooslow, N_tooslow_hard, N_tooslow_easy,
+                          Prop_tooslow, Prop_tooslow_hard, Prop_tooslow_easy,
+                          N_reward_trials, N_setback_trials, Reinforce_rate, 
+                          N_hard_reward, N_hard_setback, Reinforce_hard, 
+                          N_easy_reward, N_easy_setback, Reinforce_easy)
+                  
+ cumulative_data <- rbind(cumulative_data, subdata)
+
+}
+ 
+head(cumulative_data)
+behavior_run_data <- cumulative_data
+```
+
+## check for repeated runs - none! 
+```{r}
+
+check_runs <- behavior_run_data %>%
+  group_by(SUBJECTID) %>%
+  summarize(N_runs = n()) %>%
+  filter(N_runs > 2)
+nrow(check_runs)  
+check_runs
+```  
+  
+
+```{r}
+save(behavior_run_data, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_all_runs.Rdata")
+```
+
+
+
+# make dataframe in long format for behavior analysis.
+only with subjects who should be included.
+```{r}
+# make an empty dataframe.
+data.long <- data.frame()
+for(i in filelist){
+  #print (i)
+  filename <- i
+  file <- paste0(filepath, i)
+  # assign data frame for each subject and read it into R
+  data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+  data.file <- data.frame(data.file)
+  task_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
+  # get the subject ID and run number.
+  SUB <- substr(filename, 1, 5)
+  filename2 <- unlist(strsplit(filename, "_"))
+  Run_number <- filename2[2]
+        data.file2 <- data.file %>%
+              select(date, Trial_Number, Effort_Choice, 
+                     key_resp_choice.keys, key_resp_choice.rt,
+                    Trial_Number_Easy, Trial_Number_Hard, Choice_Number_Miss, 
+                       max_keys, key_count,  Accuracy, Reward_received)
+        # use the subject ID and run number from file name, not file contents!! 
+        data.file3 <- data.frame(SUB, Run_number, task_version, data.file2)
+        # add data for each subject to list of data frames 
+        data.long <- rbind(data.long, data.file3)
+}
+
+#head(data.long)
+
+behavior_long_data <- data.long
+save(behavior_long_data, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_long_format_all_data.Rdata")
+```
+
+# make dataframe for capturing RT of each button press during effort tasks - separate 
+
+```{r}
+effort_RT_long <- data.frame()
+for(i in filelist){
+  #print (i)
+  filename <- i
+  file <- paste0(filepath, i)
+  # assign data frame for each subject and read it into R
+  data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+  data.file <- data.frame(data.file)
+  task_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
+  # get the subject ID and run number.
+  SUB <- substr(filename, 1, 5)
+  filename2 <- unlist(strsplit(filename, "_"))
+  Run_number <- filename2[2]
+# if they made both hard and easy choices 
+    if ('key_resp_effort.rt' %in% names(data.file) & 'key_resp_hard_effort.rt' %in% names(data.file)){
+        data.file2 <- data.file %>%
+            select(date, Trial_Number, key_resp_hard_effort.rt, key_resp_effort.rt) %>%
+             # the easy condition isn't marked as such, only hard is. rename to be more intuitive . 
+            rename(cumulative_RT_hard_effort = key_resp_hard_effort.rt, 
+                   cumulative_RT_easy_effort = key_resp_effort.rt)
+   # if they only had easy choices
+  } else if ('key_resp_effort.rt' %in% names(data.file) & !'key_resp_hard_effort.rt' %in% names(data.file)){
+        data.file2 <- data.file %>%
+            select(date, Trial_Number, key_resp_effort.rt) %>%
+            rename(cumulative_RT_easy_effort = key_resp_effort.rt) %>%
+          # make a variable placeholder and mark NA for easy task RT.
+            mutate(cumulative_RT_hard_effort = NA)
+    # if they only had hard choices 
+    } else if (!'key_resp_effort.rt' %in% names(data.file) & 'key_resp_hard_effort.rt' %in% names(data.file)){
+              data.file2 <- data.file %>%
+            select(date, Trial_Number, key_resp_hard_effort.rt) %>%
+            rename(cumulative_RT_hard_effort = key_resp_hard_effort.rt) %>%
+          # make a variable placeholder and mark NA for easy task RT.
+            mutate(cumulative_RT_easy_effort = NA)
+    # now merge the various stuff together for each subject
+   # use the subject ID and run number from file name, not file contents!! 
+    data.file3 <- data.frame(SUB, Run_number, task_version, data.file2)
+    # add data for each subject to list of data frames 
+     effort_RT_long <- rbind(effort_RT_long, data.file3)
+    }
+}
+
+save(effort_RT_long, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_effort_RT_during_task_trials.Rdata")
+
+```

@@ -1,0 +1,220 @@
+---
+title: "Aggregate Motion data for effort task"
+author: "Michelle Vantieghem"
+date: "Nov 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# Notes
+updated August 2019 to add PA257 
+updated November 26, 2019 to check PA255 and to fix up sublists
+
+*THIS SCRIPT MUST BE RUN ON ELVIS where raw imaging data lives*
+
+# Exclusion criterion  
+## motion threshold used for exclusion: 
+censored TRs if Framewise displacement > 0.9
+excluded runs if >100 TRs 
+## N volumes threshold for exclusion:
+if there aren't more than 300 out of 400 volumes in a run, (aka they stopped early) exclude it. 
+
+*remember to change date stamps before running*
+```{r,  message = F, warning = F}
+library(stringi)
+library(tidyverse)
+
+```
+
+# set  variables and paths 
+```{r}
+store_dir <- "/Volumes/danl/PACCT/scripts/effort_reward/FSL_pipeline/1.motion_assess/"
+# get most current subject list
+OG_sublist <-read.table("../3_brain_set_up_scripts/sublists/sublist_scans_2019-04-10.txt")
+names(OG_sublist) <- "SUBJECTID"
+OG_sublist$should_have_scan <- 1
+# list path to find subject data.
+sub_dir <- "/Volumes/danl/PACCT/subject_data/derivatives/effort_reward/"
+```
+
+
+## add number of TRs in each scan 
+to make sure the scans included weren't cut short! 
+```{r}
+num_vols <- read.csv('data/Effort_scans_numVols_per_run.txt', header =FALSE, sep = "z")
+
+#head(num_vols)
+names(num_vols) <- c("subject_run", "TRs")
+# split up the info in the path
+split <- strsplit(as.character(num_vols$subject_run), "/")
+sublist <- vector()
+
+# extract the 6th element from the split string, which is PAxxx
+ for (i in split){
+    sub <- i[[7]]
+    # save this into a list! 
+    sublist <- rbind(sublist, sub)
+ }
+# extract the 9th element, which is run1 or run2
+runlist <- vector()
+ for (i in split){
+    sub <- i[[10]]
+    # save this into a list! 
+    runlist <- rbind(runlist, sub)
+ }
+# save these into data frame 
+num_vols$SUBJECTID <- as.factor(sublist)
+num_vols$RunNumber <- as.factor(runlist)
+```
+
+# find subjects with no data -
+not sure why these folders and files were ever generated!! 
+```{r}
+delete_folders <- num_vols %>%
+  filter(is.na(TRs))
+
+head(delete_folders)
+nrow(delete_folders)
+#write.csv(delete_folders, "DELETE_folders_created_when_no_fmri_data_collected_2018-01-09.txt", row.names = F, quote = F)
+
+```
+
+
+# sublist with runs - with actual data 
+```{r}
+subjects_keep <- num_vols %>% 
+  filter(!is.na(TRs))
+#head(subjects_keep)
+```
+
+## compare with OG sublist
+sanity check, not missing any scans.
+```{R}
+sum(!subjects_keep$SUBJECTID %in% OG_sublist$SUBJECTID)
+
+```
+
+# begin compiling motion data with only those subs
+```{r}
+# make an empty dataframe to save stuff to
+compiled_info <- data.frame()
+
+```
+
+## set a loop to get censored TRs for each run into df
+```{r, eval = F, include = F}
+#subject), run, numTRs, meanFD
+for (subject in unique(subjects_keep$SUBJECTID)){
+
+ # print(subject)
+  sub_info <- subset(subjects_keep, SUBJECTID == subject)
+
+  # this way it doesn't matter whether 1 or 2 runs, script won't crash
+  for (r in 1:nrow(sub_info)){
+      run <- paste0("run", r)
+     #print(paste0(subject, run))
+     # if subject doesn't have data for this run, skip ! 
+     if (!dir.exists (paste0(sub_dir, subject, "/effort/BOLD/", run))){
+        #print (paste0("no data for ", subject, run))
+        }
+     else {  # if subject has the run, but no motion folder... go fix.
+          if(!file.exists(paste0(sub_dir, subject, "/effort/BOLD/", run, "/motion_assess/outlier_output.txt"))){
+        	#  print(paste0("no motion_assess files for ", subject, run, ", go fix this!"))
+            }
+          else { # if the subject has the run, and the motion folder exists... 
+          #print (paste0("getting motion info for", subject, run))
+           motion_info <- read.table(paste0(sub_dir, subject, "/effort/BOLD/",run, "/motion_assess/censored_TR.txt"))
+          numTRs_censored <- motion_info[1,1]
+          sub_row <- data.frame(subject, run, numTRs_censored)
+           compiled_info <- (rbind(compiled_info, sub_row))
+           }
+         }
+      }
+}
+
+names(compiled_info) <- c("SUBJECTID", "RunNumber", "censored_TRs") 
+head(compiled_info)
+```
+
+## set loop for framewise displacement 
+(copied from Paul!)
+```{r}
+# Get average framewise displacement into dataframe
+for(i in 1:nrow(compiled_info)){
+
+  run <- compiled_info$RunNumber[i]
+  subject <- compiled_info$SUBJECTID[i]
+  # get the file that has the FD for each TR of each run
+  fileName <- paste0(sub_dir, subject, "/effort/BOLD/", run, "/motion_assess/framewiseDisplacement.txt")
+  
+   if(!file.exists(fileName)){
+        	print(paste0("no FD text file for ",  subject, run, ", go fix this!"))
+      compiled_info$meanFD_all_trs[i] <- NA
+     compiled_info$meanFD_included_trs[i] <- NA
+
+       }else{ # if the subject has the run, and the motion folder exists... 
+   # print(fileName)
+    motionFrame <- read.table(fileName, stringsAsFactors = F) 
+    names(motionFrame) <- c('fd')
+    compiled_info$meanFD_all_trs[i] <- mean(motionFrame$fd)
+    compiled_info$meanFD_included_trs[i] <- mean(motionFrame$fd[motionFrame$fd <= .9])
+       }
+}
+
+head(compiled_info)
+```
+
+## merge and clean up a bit
+```{r}
+merged_df <- left_join(compiled_info, subjects_keep, by = c("SUBJECTID", "RunNumber"))
+head(merged_df)
+nrow(merged_df) # 
+
+summary(merged_df$RunNumber)
+```
+
+# Mark scans for inclusion/exclusion
+## identify complete scans (not cut short)
+```{r}
+# NA means the scan was incomplete...
+merged_df$incomplete_scan <- ifelse(merged_df$TRs < 375, 1, 0)
+merged_df$complete_scan <- ifelse(merged_df$TRs == 375, 1, 0)
+N_incomplete <- sum(merged_df$incomplete_scan)
+N_complete <- sum(merged_df$complete_scan)
+
+
+print(paste0(nrow(merged_df), " total runs of effort task"))
+print(paste0(N_incomplete, " runs of effort task cut short < 375 TRs"))
+print(paste0(N_complete, " complete runs of effort task"))
+```
+
+## of complete scans, which have good enough motion to keep? 
+```{r}
+merged_df$censored_TRs <- as.numeric(as.character(merged_df$censored_TRs))
+merged_df$include <- ifelse(merged_df$censored_TRs < 100, 1, 0)
+merged_df$exclude <- ifelse(merged_df$censored_TRs >= 100, 1,0)
+
+N_include <- sum(merged_df$include, na.rm = T)
+N_exclude_motion <- sum(merged_df$exclude, na.rm = T)
+
+print(paste0(N_include, " complete runs of effort task to include"))
+
+print(paste0(N_exclude_motion, " complete runs of effort task excluded for motion"))
+
+print(paste0("proportion of scans excluded for motion using 0.9 and 100TR threshold: ", N_exclude_motion/N_complete))
+
+```
+
+## save the compiled data file
+```{r}
+
+save(merged_df, file = paste0("data/compiled_motion_info_", Sys.Date(), ".Rdata"))
+
+```

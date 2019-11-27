@@ -1,0 +1,121 @@
+---
+title: "Motion exclusion summary/log"
+author: "Michelle Vantieghem"
+date: "November 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+
+# Exclusion criterion  
+## motion threshold used for exclusion: 
+censored TRs if Framewise displacement > 0.9
+excluded runs if >100 TRs 
+## N volumes threshold for exclusion:
+if there aren't more than 300 out of 400 volumes in a run, (aka they stopped early) exclude it. 
+
+
+# load motion data
+```{r, warning = F, message = F}
+library(tidyverse)
+# this is the most recent motion assessment.
+load("data/compiled_motion_info_2019-08-07.Rdata")
+
+```
+
+
+## How many subjects have 1 or 2 usable runs?
+### 2 runs 
+```{r}
+
+# aggregate this data by subject,
+# count how many runs they have in each category (include 0 or 1)
+compiled_by_subject <- merged_df %>%
+  group_by(SUBJECTID) %>%
+  summarize(Numer_of_runs = n())
+N_subs_with_attempted_effort <- nrow(compiled_by_subject)
+
+compiled_by_subject2 <- merged_df %>%
+  group_by(include,SUBJECTID) %>% 
+  summarize(Number_of_runs = n())
+
+# how many subjects have usable data 
+keep_any_scans <- compiled_by_subject2 %>% filter(include == 1)
+N_subs_with_any_included_scans <- nrow(keep_any_scans)
+
+#how many subjects have 2 runs of usable data
+keep_2_runs <- compiled_by_subject2 %>% filter(include == 1 & Number_of_runs == 2)
+N_keep_2_runs <- nrow(keep_2_runs)
+
+```
+
+### 1 run 
+```{r}
+# how many subjects have 1 run of usable data
+keep_1_run <- compiled_by_subject2 %>% 
+  filter(include == 1 & Number_of_runs == 1)
+N_keep_1_run <- nrow(keep_1_run)
+# which run to keep?
+by_run <- merged_df %>%
+  dplyr::select(SUBJECTID, RunNumber, include) %>%
+  spread(key = RunNumber, value = include) 
+
+# run 1 only 
+run1_only <- by_run %>%
+  filter(run1 == 1 & (is.na(run2) | run2 == 0))
+
+# run 1 only 
+run2_only <- by_run %>%
+  filter(run2 == 1 & (is.na(run1) | run1 == 0))
+
+```
+
+# RESULTS of most recent data assessment
+*November 26, 2019* 
+these stats are identical to august 2019. 
+so we always had PA255 in the motion assessment! just didn't make it past behavioral QC. 
+```{R}
+print(paste0("subjects attempted effort scan: ", N_subs_with_attempted_effort))
+print(paste0("subjects with any usable effort scans: ", N_subs_with_any_included_scans))
+print(paste0("subjects with only 1 usable effort scan: ",N_keep_1_run))
+print(paste0("subjects with 2 usable effort scans: ", N_keep_2_runs))
+```
+
+# August 2019 
+[1] "subjects attempted effort scan: 166"
+[1] "subjects with any usable effort scans: 138"
+[1] "subjects with only 1 usable effort scan: 36"
+[1] "subjects with 2 usable effort scans: 102"
+
+# Jan 9, 2019 
+[1] "subjects attempted effort scan: 149"
+[1] "subjects with any usable effort scans: 125"
+[1] "subjects with only 1 usable effort scan: 33"
+[1] "subjects with 2 usable effort scans: 92"
+
+# PRIOR RESULTS
+## Nov 21 , 2018
+1] "subjects attempted effort scan: 111"
+[1] "subjects with any usable effort scans: 95"
+[1] "subjects with only 1 usable effort scan: 30"
+[1] "subjects with 2 usable effort scans: 65"
+
+## SEPTEMBER 4, 2018
+[1] "subjects attempted effort scan: 84" \
+[1] "subjects with any usable effort scans: 70" \
+[1] "subjects with only 1 usable effort scan: 23" \
+[1] "subjects with 2 usable effort scans: 47" \ 
+
+
+## Feb 20, 2018 
+[1] "subjects attempted effort scan: 12" \ 
+[1] "subjects with any usable effort scans: 10" \
+[1] "subjects with only 1 usable effort scan: 6" \
+[1] "subjects with 2 usable effort scans: 4" \

@@ -1,0 +1,36 @@
+---
+title: "Rsync_for_effort_to_habanero"
+author: "Michelle Vantieghem"
+date: "February 15, 2018"
+output:
+    html_document:
+        toc: yes
+        toc_float:
+            smooth_scroll: true
+            collapsed: false
+        number_sections: false
+---
+
+# How to use rsynch data 
+## moving data from elvis to habanero 
+### specifically, synch effort data to run level1 & level2 on habanero
+
+# some impt notes:
+### 1. n = dry run which will tell you pretend version of synching data,
+### which gives lots of info in terminal to check before actually synching. 
+### delete the n when you're ready to actually synch the data.
+
+### 2. use 'habaxfer' instead of 'habanero': allows files to transfer much faster.
+
+### 3. always run this command  *from* elvis terminal, not habanero terminal. 
+
+### 4. don't actually run this rmd file, copy and paste code into terminal
+
+### 5. this can take a really long time to synch, run with nohup! 
+e.g. nohup rsynch command & tail -f nohup.out 
+
+### from elvis to habanero
+```{bash}
+# copy all stuff in "derivatives" folder on elvis and move it to same place on habanero.
+rsync -nrlv  /danl/PACCT/subject_data/effort_reward/* mrv2115@habaxfer:/rigel/psych/users/mrv2115/PACCT/subject_data/effort_reward/
+```

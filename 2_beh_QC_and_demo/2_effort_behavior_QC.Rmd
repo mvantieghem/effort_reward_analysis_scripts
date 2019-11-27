@@ -1,0 +1,183 @@
+---
+title: "Quality control for effort task data"
+author: "Michelle.VanTieghem"
+date: "April 2, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes on Exclusion criterion
+Behavioral data:  All behavioral data, collected in or out of the scanner, will be considered for these analyses. Participants who completed at least 1 run of usable behavioral data will be included in the analyses. Runs with <70% responses during the choice phase will be excluded from all behavior analyses.
+
+
+# load data 
+all behavior data combined, by run.
+```{r, warning = F, message = F}
+library(tidyverse)
+load( "../../behavioral_data/combined_behavior_master/combined_effort_ft_pt_behavior_by_run_all_data.Rata")
+
+# get rid of fake subjectIDs - test things 
+beh_master <- beh_master %>%
+ filter(SUBJECTID != "PA999" & SUBJECTID != "PAPA1" & SUBJECTID != "PApa1" &
+          SUBJECTID != "PApa0" & SUBJECTID != "PAPA0" & SUBJECTID != "PA000")
+
+```
+
+
+# filter data 
+## how many subjects did the task.
+```{r}
+N_runs_attempted <- nrow(beh_master)
+N_runs_attempted
+sublist_attempted <- unique(beh_master$SUBJECTID)
+N_subs_attempted <- length(sublist_attempted) # 174
+N_subs_attempted
+```
+
+## how many complete runs ( 18 out of 21 trials)
+
+```{r}
+
+beh_master <- beh_master %>%
+  mutate(beh_QC_complete_run = ifelse(N_trials > 18, 1, 0))
+N_runs_complete <- sum(beh_master$beh_QC_complete_run, na.rm = T)
+N_runs_complete
+N_subs_complete <- beh_master %>%
+  filter(beh_QC_complete_run == 1) %>% 
+  group_by(SUBJECTID) %>%
+  summarize(n = n()) %>%
+  summarize(n = n())
+N_subs_complete
+```
+
+
+## of complete runs, how many  subjects missed too many choices?
+13 Runs from 11 subjects 
+```{r}
+
+beh_master <- beh_master %>% 
+  mutate(beh_QC_choices_resp_70_include = ifelse(N_choices_resp >= (0.7*N_trials), 1, 0))
+
+N_runs_exclude_for_missed_choices <- beh_master %>% 
+  filter(beh_QC_complete_run == 1) %>% # of only complete runs
+  filter (beh_QC_choices_resp_70_include == 0) %>%
+  summarize(n = n())
+N_runs_exclude_for_missed_choices 
+
+N_subs_exclude_for_missed_choices <- beh_master %>% 
+  filter(beh_QC_complete_run == 1) %>% # of only complete runs
+  filter (beh_QC_choices_resp_70_include == 0) %>%
+  group_by(SUBJECTID) %>%
+  summarize(n = n()) %>%
+  summarize(n = n())
+N_subs_exclude_for_missed_choices 
+
+```
+
+## of remaining, how many "too slow" too often? 
+```{r}
+## exclusion numbers
+exclude_for_too_slow <- beh_master %>%
+  filter(N_tooslow > 0.5*N_trials)
+
+beh_master <- beh_master %>% 
+  mutate(beh_QC_tooslow_50_include = ifelse(N_tooslow < 0.5*N_trials, 1, 0))
+
+N_runs_exclude_for_too_slow <- beh_master %>% 
+  filter(beh_QC_complete_run == 1) %>% # of only complete runs
+  filter (beh_QC_choices_resp_70_include == 1) %>% # of people who responded enough
+  filter(beh_QC_tooslow_50_include == 0) %>%
+  summarize(n = n())
+N_runs_exclude_for_too_slow <- nrow(N_runs_exclude_for_too_slow) # 0
+
+#This code chunk doesn't work because there are no runs that count!
+#N_subs_exclude_for_too_slow <- beh_master %>% 
+ # filter(beh_QC_complete_run == 1) %>% # of only complete runs
+#  filter (beh_QC_choices_resp_70_include == 1) %>% # of people who responded enough
+#  filter(beh_QC_tooslow_50_include == 0) %>%
+ # group_by(SUBJECTID) %>%
+#  summarize(n = n()) %>%
+#  summarize(n = n())
+N_subs_exclude_for_too_slow <- 0
+
+```
+
+
+## summary of N inclusion/exclusion
+```{r}
+subs <- rbind(N_subs_attempted, N_subs_complete, N_subs_exclude_for_missed_choices, N_subs_exclude_for_too_slow) %>%
+  rename(subs = n)
+runs <-  rbind(N_runs_attempted, N_runs_complete, N_runs_exclude_for_missed_choices, N_runs_exclude_for_too_slow) %>%
+  rename(runs  = n)
+
+exclusion_behavior_table <- data.frame(cbind(subs, runs)) %>%
+  mutate(categories = c("effort attempted", "complete", "excluded for missed choices", "excluded for too slow")) %>%
+  select(categories, subs, runs)
+
+
+exclusion_behavior_table
+
+save(exclusion_behavior_table, file = "tables/exclusion_behavior_table.Rdata")
+```
+
+## check reinforcement rates 
+not excluding for now, but marking for secondary analyses later.
+
+### reinforcement rate by run 
+ 3 runs that exceed 3 sd from the mean reinforcement - to be excluded.
+```{r}
+reinf_run_mean <- mean(beh_master$Reinforce_rate, na.rm = T)
+reinf_run_sd <- sd(beh_master$Reinforce_rate, na.rm = T)
+reinf_run_upper <- reinf_run_mean + 3*reinf_run_sd
+reinf_run_lower <- reinf_run_mean - 3*reinf_run_sd
+range(beh_master$Reinforce_rate)
+
+beh_master <- beh_master %>% 
+  mutate(extreme_reinforce = ifelse(Reinforce_rate > reinf_run_upper |
+                                      Reinforce_rate < reinf_run_lower, 1, 0))
+sum(beh_master$extreme_reinforce, na.rm = T)
+```
+
+### reinforcement rate by subject
+no individual subject had extreme reinforcement across BOTH runs that exceeds 3SD from mean
+```{r}
+
+reinforce_subj <- beh_master %>%
+  select(SUBJECTID, Run_number, Reinforce_rate) %>%
+  group_by(SUBJECTID) %>%
+  # absolute value of differences between runs. 
+  summarize(Reinforce_diff_runs = max(Reinforce_rate) - min(Reinforce_rate), 
+            Reinforce_mean_runs = mean(Reinforce_rate))
+
+hist(reinforce_subj$Reinforce_diff_runs)
+hist(reinforce_subj$Reinforce_mean_runs)
+
+```
+
+# save data with QC info and sublist to include. 
+```{r}
+# save this data ! 
+save(beh_master, file ="../../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_with_QC.Rdata")
+
+# save this subject-by-run list! 
+include_behavior_df <- beh_master %>%
+  filter(beh_QC_complete_run == 1 & 
+           beh_QC_choices_resp_70_include == 1 &
+           beh_QC_tooslow_50_include == 1) %>%
+  select(SUBJECTID, Run_number)
+
+write.table(include_behavior_df, file = paste0("sublists/include_behavior_only_", Sys.Date(), ".txt"))
+
+# double checking that re-runnign the preprocessing on Nov 26, 2019 didn't change sublist. 
+test <- read.table("../../Sublists/sublist_include_behavior_only_2019-08-16.txt")
+# confirmed!! 
+identical(as.character(test$SUBJECTID), as.character(include_behavior_df$SUBJECTID))
+```
+

@@ -1,0 +1,26 @@
+---
+title: "making a sublist of newest scans to process"
+author: "Michelle.VanTieghem"
+date: "1/8/2019"
+output: html_document
+---
+
+# for new scans since last processing
+```{r}
+new_list <- read.table("/Volumes/danl/PACCT/scripts/effort_reward/FSL_pipeline/Sublists/sublists_July2018/sublist_scans_2019-03-20.txt")
+old_list <- read.table("/Volumes/danl/PACCT/scripts/effort_reward/FSL_pipeline/Sublists/sublists_July2018/sublist_scans_2019-01-08.txt")
+
+old_list$processed_already <- 1
+
+merged_list <- merge(old_list, new_list, by = "V1", all = T)
+
+head(merged_list)
+tail(merged_list)
+
+scans_to_process <- subset(merged_list, is.na(processed_already))
+nrow(scans_to_process)
+
+scans_to_process <- scans_to_process$V1
+write.table(scans_to_process, paste0("/Volumes/danl/PACCT/scripts/effort_reward/Sublists/preproc_sublists/scans_to_process", Sys.Date(), ".txt",  quote = F, col.names = F, row.names = F)
+
+```

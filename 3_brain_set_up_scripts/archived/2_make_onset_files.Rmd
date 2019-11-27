@@ -1,0 +1,237 @@
+---
+title: "Make onset files for effort reward"
+author: "Michelle Vantieghem"
+date: "April 12, 2019"
+output:
+    html_document:
+        toc: yes
+        toc_float:
+            smooth_scroll: true
+            collapsed: false
+        number_sections: true
+---
+updated: fixing some bugs, July 5, 2018
+*before running this, update date stamps!*
+
+updating April 12, 2019 
+(1) combining turtles and missed choices as one confound file
+(2) making it blank if there are no confounds instead of 000 for FSL.
+
+
+# 1. get most current subject list of usable scans + behavior 
+```{r}
+# load the most recent subject list. 
+subject_list <- read.table("/Volumes/danl/PACCT/scripts/effort_reward/Sublists/preproc_sublists/sublist_include_scan_and_beh_for_preproc_2019-04-11.txt")
+# how many subjects are there? 
+nrow(subject_list)
+head(subject_list)
+
+# conver this into a useable format. 
+#sublist <- t(as.character(subject_list$V1))
+```
+
+
+
+# 2. read files into R - only for these usable runs of usable subjects.
+```{r}
+# get all behavior data files
+filepath <- "/Volumes/danl/PACCT/scripts/effort_reward/behavior/behavioral_data/3_effort_task_data/scan_version/"
+filelist <- list.files(filepath, pattern = "csv")
+length(filelist) # 
+
+# make empty data list.
+data.list <- list()  
+library(tidyverse)
+
+for(i in filelist){
+  file <- paste0(filepath, i)
+  # GET SUBJECTID AND RUNNUM
+  subjectid <- substr(i, 1, 5)
+  run_num <- paste0("run",substr(i, 10,10))
+  # only if subject in usable list...
+  if (subjectid %in% subject_list$SUBJECTID){
+      sub_runs_usable <- subject_list %>%
+        filter(SUBJECTID == subjectid)
+        # and only if this run is usable...
+      if (run_num %in% sub_runs_usable$RunNumber){
+         # assign data frame for each subject 
+          data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+          data.file <- data.frame(data.file)
+          names(data.file)
+          # add data for each subject to list of data frames 
+          data.list[[i]] <- data.file
+      }
+  }
+}
+length(data.list) # 215 ! 
+
+
+```
+
+# 3. For each run for each subject, make the onset files and save them.
+```{r}
+# run a loop for each dataframe in the list
+# there will be 2 dataframes for each subject (2 runs)
+stim_list <- c("Reward", "Effort", "Choice")
+library(tidyverse)
+for (i in 1:length(data.list)){
+  # save the dataframe 
+  i <- 1
+  df <- data.list[[i]]
+  SUBJECTID <- substr(names(data.list)[i], 1, 5)
+  RunNumber <- paste0("run", substr(names(data.list)[i], 10, 10))
+  
+### STOP: don't bother making onsets if they already exist 
+  # for this subject and this run!
+#  if (!file.exists(paste0("/Volumes/danl/PACCT/subject_data/derivatives/effort_reward/", SUBJECTID, "/effort/model/onsets/", SUBJECTID,"/", RunNumber, "_easy.txt"))){
+    print(paste0("making onsets for ", SUBJECTID))
+    
+    for (stim_type in stim_list){
+      stim_type <- stim_list[1]
+      stim_type_onset <- paste0(stim_type, "_Phase_Onset")
+      onsets <- df %<%
+        select(stim_type_onset) %>%
+        filter(!is.na(stim_type_onset))
+
+  #get onset times for each stim type 
+  feedback_onsets <- df$Reward_Phase_Onset[!is.na(df$Reward_Phase_Onset)]
+  effort_onsets <- df$Effort_Phase_Onset[!is.na(df$Effort_Phase_Onset)]
+  choice_onsets <- df$Choice_Phase_Onset[!is.na(df$Choice_Phase_Onset)]
+
+  # make onset files for each stim type with 3 columns:
+  # onset time (seconds), duration (seconds) and modulation (usually 1)
+  # stim time for choice and effort are 3 seconds.
+  effort_onset_file <- cbind(effort_onsets, rep(3, length(effort_onsets)), rep(1, length(effort_onsets)))
+  choice_onset_file <- cbind(choice_onsets, rep(3, length(choice_onsets)), rep(1, length(choice_onsets)))
+  # note that feedback stim time is only 1.5 seconds
+  feedback_onset_file <- cbind(feedback_onsets, rep(1.5, length(feedback_onsets)), rep(1, length(feedback_onsets)))
+
+  ### now, save the onset times for each choice type.###
+  # make onset files based on choice type.
+  # first, subset the data based on choice type.
+  easy_trials <- subset(df, Effort_Choice == "Easy")
+  nrow(easy_trials)
+  hard_trials <- subset(df, Effort_Choice== "Hard")
+  nrow(hard_trials)
+  missed_trials <- subset(df, Effort_Choice == "Miss")
+  nrow(missed_trials)
+  # check total trial number
+  total_trials <- nrow(easy_trials) +  nrow(hard_trials) + nrow(missed_trials)
+  
+  # easy trials 
+  if (nrow(easy_trials) > 0){
+    easy_onsets <- easy_trials$Choice_Phase_Onset
+    easy_onset_file <- cbind(easy_onsets, rep(3, length(easy_onsets)), 
+                               rep(1,     length(easy_onsets)))
+  
+  } else{
+    easy_onsets <- NA
+    easy_onset_file <- ""
+  }
+  
+  # hard trials 
+  if (nrow(hard_trials) > 0){
+    hard_onsets <- hard_trials$Choice_Phase_Onset
+    hard_onset_file <- cbind(hard_onsets, rep(3, length(hard_onsets)), 
+                               rep(1,     length(hard_onsets)))
+  
+  } else{
+    hard_onsets <- NA
+    hard_onset_file <- ""
+  }
+  
+  # missed trials 
+  if (nrow(missed_trials) > 0){
+    missed_onsets <- missed_trials$Choice_Phase_Onset
+    missed_onset_file <- cbind(missed_onsets, rep(3, length(missed_onsets)), 
+                               rep(1,     length(missed_onsets)))
+  
+  } else{
+    missed_onsets <- NA
+    missed_onset_file <- ""
+  }
+
+
+  ##### now save the onset times for each feedback type####
+  # get onsets based on feedback type (reward, non-reward, or too slow)
+  # accuarcy refers to whether they reached the top of green bar 
+  # so accuracy = 0 means they were too slow
+  # reward received indexes actual reinforcement.
+
+  å# get feedback onsets based on which task they chose
+  too_slow_trials <- subset(df, Accuracy == 0)
+  nrow(too_slow_trials)
+  reward_trials <- subset(df,  Accuracy == 1 & Reward_received == 1)
+  nrow(reward_trials)
+  setback_trials <- subset(df,  Accuracy == 1 & Reward_received == 0)
+  nrow(setback_trials)
+  # breaking down feedback by effort
+  easy_reward_trials <- subset(df,  Accuracy == 1 & 
+                                 Reward_received == 1 & Effort_Choice == "Easy")
+  easy_setback_trials <- subset(df, Accuracy == 1 & 
+                                  Reward_received == 0 & Effort_Choice == "Easy")
+  hard_reward_trials <- subset(df,  Accuracy == 1 & 
+                                 Reward_received == 1 & Effort_Choice == "Hard")
+  hard_setback_trials <- subset(df,  Accuracy == 1 & 
+                                Reward_received == 0 & Effort_Choice == "Hard")
+
+  # too slow trials  
+  if (nrow(too_slow_trials) > 0){
+    too_slow_onsets <- too_slow_trials$Reward_Phase_Onset
+    too_slow_onset_file <- cbind(too_slow_onsets, rep(3, length(too_slow_onsets)), 
+                               rep(1,     length(too_slow_onsets)))
+  
+  } else{ # make this blank instead of 000! 
+    too_slow_onsets <- NA
+    too_slow_onset_file <- ""
+  }
+  
+  
+  reward_onsets <- reward_trials$Reward_Phase_Onset
+  setback_onsets <- setback_trials$Reward_Phase_Onset
+  easy_reward_onsets <- easy_reward_trials$Reward_Phase_Onset
+  easy_setback_onsets <- easy_setback_trials$Reward_Phase_Onset
+  hard_reward_onsets <- hard_reward_trials$Reward_Phase_Onset
+  hard_setback_onsets <- hard_setback_trials$Reward_Phase_Onset
+  
+  # make the onset files with 3 columns
+  reward_onset_file <- cbind(reward_onsets, rep(1.5, length(reward_onsets)), rep(1, length(reward_onsets)))
+  setback_onset_file <- cbind(setback_onsets, rep(1.5, length(setback_onsets)), rep(1, length(setback_onsets)))
+  
+  easy_reward_onset_file <- cbind(easy_reward_onsets, rep(1.5, length(easy_reward_onsets)), rep(1, length(easy_reward_onsets)))
+  easy_setback_onset_file <- cbind(easy_setback_onsets, rep(1.5, length(easy_setback_onsets)), rep(1, length(easy_setback_onsets)))
+  hard_reward_onset_file <- cbind(hard_reward_onsets, rep(1.5, length(hard_reward_onsets)), rep(1, length(hard_reward_onsets)))
+  hard_setback_onset_file <- cbind(hard_setback_onsets, rep(1.5, length(hard_setback_onsets)), rep(1, length(hard_setback_onsets)))
+  
+
+# designate where you will save the onset files to on the server.
+# note tht you are saving these into the derivatives folder, where your processed data lives
+output.directory <- paste0("/Volumes/danl/PACCT/subject_data/derivatives/effort_reward/", SUBJECTID, "/effort/model/onsets/")
+
+# write the files to the output directory, saved as text files with correct formatting.
+# THREE MAIN STIM TYPES 
+write.table(choice_onset_file, paste0(output.directory, SUBJECTID, "_run", Run_number, "_choice_phase.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(effort_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_effort_phase.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(feedback_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_feedback_phase.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+# CONDITIONS
+
+write.table(easy_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_easy.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(hard_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_hard.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+write.table(reward_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_reward.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(setback_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_seback.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+write.table(easy_reward_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_easy_reward.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(easy_setback_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_easy_seback.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(hard_reward_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_hard_reward.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+write.table(hard_setback_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_hard_seback.txt"),col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+
+# CONFOUND REGS
+write.table(too_slow_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_too_slow.txt"), col.names = FALSE,row.names =  FALSE, quote = FALSE)
+write.table(missed_onset_file, paste0(output.directory, SUBJECTID,"_run", Run_number, "_missed.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+  }
+}
+# done! 
+```

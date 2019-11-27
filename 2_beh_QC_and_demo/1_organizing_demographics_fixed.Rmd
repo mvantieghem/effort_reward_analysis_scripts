@@ -1,0 +1,81 @@
+---
+title: "organizing demographics"
+author: "Michelle.VanTieghem"
+date: "November 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    collapsed: no
+    smooth_scroll: yes
+    df_print: paged
+  pdf_document:
+    toc: yes
+---
+
+# notes 
+updated Nov 26, 2019 to just use updated groups from master for deciding PI_DA/ COMP_DC groupings. 
+old version had wrongly been including 4 DA subjects as comps becuase they didn't have any CGH_IFC or CGH_FC ...
+
+# load data 
+## master 
+```{r, include = F,warnings = F, error = F}
+library(readxl)
+library(tidyverse)
+
+
+master <- read_excel("../../subj_demo/masters/MASTER_20191118.xlsx") 
+demo <- master %>%
+  select(IDENT_SUBID, GROUP, SUBAGE_Session1, DEM_3_GENDER_CHILD, WASI_FSIQ, 
+          starts_with("COPE"), INC_ITN_HOUSE, starts_with("CGH")) %>%
+  mutate(SUBJECTID =substr(IDENT_SUBID, 1, 5), 
+# comps are the non-adopted kids!
+        PI_DA = as.factor(ifelse(GROUP == "C" | GROUP == "DC", 0, 1)))  %>%
+  rename(AGE = SUBAGE_Session1, 
+         SEX = DEM_3_GENDER_CHILD)
+
+```
+
+## pull race variables
+set up for enrollment reporting
+get from SUBIDKEY DEMO! not MASTER! 
+Races	Code
+American Indian	1
+Asian	2
+Native Hawaiian/ pacific islander	3
+Black	4
+White	5
+More than 1 race	6
+Unknown/ not reported	7
+```{r}
+race_vars <- read.csv("../../subj_demo/DEMO_OLD/PACCT_DEMO_4_9_19.csv") %>%
+  rename(Race = RACE) %>%
+  mutate(IDENT_SUBID = paste0(trimws(SUBJECTID), "_V1"),
+         Race = ifelse(Race == 1, "American Indian", 
+                       ifelse(Race == 2, "Asian", 
+                              ifelse(Race == 3, "Hawaiian",
+                                     ifelse(Race == 4, "Black", 
+                                            ifelse(Race == 5, "White", 
+                                                   ifelse(Race == 6, "More than one race", 
+                                                          ifelse(Race == 7, "Unknown", "FIX"))))))), 
+         Ethnicity = ifelse(HISPANIC == 1, "Hispanic or Latino", "Not Hispanic or Latino")) %>%
+  select(IDENT_SUBID, Race, Ethnicity)
+
+```
+
+
+# add better race variable into demo
+going to want to add the NAs here later! 
+```{r}
+demo <- left_join (demo, race_vars, by= "IDENT_SUBID", all = T)
+sum(is.na(demo$Race))
+# get them from here, later
+names(master)[grepl("RACE", names(master))]
+```
+
+# save it! 
+```{r}
+
+save(demo,file =  "data/demographics_from_MASTER_20191118.Rdata")
+```

@@ -1,0 +1,197 @@
+---
+title: "Finger tapping: cleaning & processing"
+author: "Michelle Vantieghem"
+date: "Nov 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+
+# Notes
+updating Nov 26, 2019 to make sure version is indicated as ft_version 
+
+# load in cleaned behavior task data, so we know which subjects to pull data from
+```{r}
+library(tidyverse)
+library(eply)
+library(stringr)
+numextract <- function(string){ 
+  str_extract(string, "\\-*\\d+\\.*\\d*")
+} 
+
+
+```
+
+# read in finger tapping (ft) data
+```{r}
+filepath <- "../../behavioral_data/LG_backups/effort_1_tapping/"
+
+ft_files2 <- list.files(path = filepath, pattern = "csv")
+
+ft.data.list <- list() 
+for(i in ft_files2){
+  file <- paste0(filepath, i)
+  # assign data frame for each subject 
+  data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+  data.file <- data.frame(data.file)
+  # add data for each subject to list of data frames 
+  ft.data.list[[i]] <- data.file
+}
+
+
+length(ft.data.list)
+save(ft.data.list, file = "../../behavioral_data/1_finger_tapping_data/compiled/compiled_finger_tapping_data_long_format_list.Rdata")
+```
+
+# loop through to clean data.
+```{r}
+cumulative_data <- data.frame()
+for (m in 1:length(ft.data.list)){
+  filename <- names(ft.data.list)[m]
+  SUBJECTID <- paste0("PA", substr(numextract(filename), 1, 3))
+  #print(SUBJECTID)
+  # get data frame out...
+  df <- data.frame(ft.data.list[[m]])
+  # only keep finger-tapping if their effort data is usable AND they have button presses!
+  if ( df$key_count[2] > 0){
+      #print(SUBJECTID)
+      # always did thumb first, and ring second. corresponds to trials 2 & 4 of task.
+      key_thumb <- as.character(df$key_resp_3.keys[2])
+      key_ring <- as.character(unlist(df$key_resp_3.keys[4]))
+      # cleaning button keys depends on which version (keyboard or computer)
+      df$ft_version <- ifelse(grepl("external_keyboard", filename), "external_keyboard", "computer")
+      df$fingers <- ifelse(grepl("thumb", filename), "thumb_ring", "pointer_pinky")
+      df$handedness <- ifelse(!"Right_handed" %in% names(df),NA,
+                              ifelse("Right_handed" %in% names(df) & df$Right_handed[1] == "YES", "R", "L"))
+      
+      if (df$ft_version[1] == "external_keyboard"){
+          key_thumb_cleaned <- as.numeric(numextract(unlist(strsplit(key_thumb, "_"))))
+          key_thumb_cleaned <- key_thumb_cleaned[!is.na(key_thumb_cleaned)]
+          key_ring_cleaned <- as.numeric(numextract(unlist(strsplit(key_ring, "_"))))
+          key_ring_cleaned <- key_ring_cleaned[!is.na(key_ring_cleaned)]
+      } else{ # only version
+          key_thumb_cleaned <- as.numeric(numextract(unlist(strsplit(key_thumb, ","))))
+          key_ring_cleaned <- as.numeric(numextract(unlist(strsplit(key_ring, ",")))) 
+      }# CONTINUE PROCESSING 
+          # reflects RT for each button press.
+          # RT actually reflects total time, not individual press RT.
+          # convert using diff
+          RT_thumb <- as.character(df$key_resp_3.rt[2])
+          RT_thumb2 <- as.numeric(numextract(unlist(strsplit(RT_thumb, ","))))
+          RT_thumb_1st_trial <- RT_thumb2[1]-0
+          RT_thumb_rest_trials <- diff(RT_thumb2)
+          RT_thumb_cleaned <- c(RT_thumb_1st_trial, RT_thumb_rest_trials)
+          # clean ring finger data 
+          RT_ring <- as.character(df$key_resp_3.rt[4])
+          RT_ring2 <- as.numeric(numextract(unlist(strsplit(RT_ring, ","))))
+          RT_ring_1st_trial <- RT_ring2[1]-0
+          RT_ring_rest_trials <- diff(RT_ring2)
+          RT_ring_cleaned <- c(RT_ring_1st_trial, RT_ring_rest_trials)
+          
+          # whichever is longer, pad other columns with NA
+          if (length(key_thumb_cleaned) > length(key_ring_cleaned)){
+              length(RT_thumb_cleaned) <- length(key_thumb_cleaned)
+              length(RT_ring_cleaned) <- length(RT_thumb_cleaned)
+              length(key_ring_cleaned) <- length(key_thumb_cleaned)
+          } else {
+              length(RT_ring_cleaned) <- length(key_ring_cleaned)
+              length(RT_thumb_cleaned) <- length(RT_ring_cleaned)
+              length(key_thumb_cleaned) <- length(key_ring_cleaned)
+          }
+    
+          # combine into summary df...
+          sub_fp_data <- data.frame(key_thumb_cleaned, key_ring_cleaned, 
+                                    RT_thumb_cleaned, RT_ring_cleaned) %>%
+            # get handedness first! 
+            mutate( # calculate outlier > 3SD above the mean RT for this subject, to exclude.
+                      upper_limit_thumb = mean(RT_thumb_cleaned, na.rm = T) + 3*sd(RT_thumb_cleaned, na.rm = T),
+                      upper_limit_ring = mean(RT_ring_cleaned, na.rm = T) + 3*sd(RT_ring_cleaned, na.rm = T),
+                    # mark those outlier trials
+                      RT_thumb_cleaned_no_outliers = ifelse(RT_thumb_cleaned > upper_limit_thumb, NA, RT_thumb_cleaned),
+                      RT_ring_cleaned_no_outliers = ifelse(RT_ring_cleaned > upper_limit_ring, NA, RT_ring_cleaned))
+          
+       sub_fp_summary <-  sub_fp_data  %>%
+            summarize(# calculate means per subject excluding any outlier presseds!! 
+              # this provides an index of subjects motor skills, all on the keyboard outside scanner.
+                      mean_RT_thumb = mean(RT_thumb_cleaned_no_outliers, na.rm = T),
+                      mean_RT_ring = mean(RT_ring_cleaned_no_outliers, na.rm = T), 
+                      median_RT_thumb = median(RT_thumb_cleaned_no_outliers, na.rm = T), 
+                      median_RT_ring = median(RT_ring_cleaned_no_outliers, na.rm = T)) %>%
+
+            mutate(IDENT_SUBID  = SUBJECTID, 
+                   handedness = df$handedness[1],
+                   ft_version = df$ft_version[1],
+                   fingers = df$fingers[1],
+                    thumb_key_count = df$key_count[2],
+                   ring_key_count = df$key_count[4]) %>%
+            select(IDENT_SUBID, ft_version, fingers, handedness, 
+                   thumb_key_count, mean_RT_thumb, median_RT_thumb, 
+                                ring_key_count, mean_RT_ring, median_RT_ring)
+         
+          cumulative_data <- rbind(cumulative_data, sub_fp_summary)
+
+      }
+}
+finger_tapping_df <- cumulative_data
+names(finger_tapping_df)
+# there are several duplicates.
+identical(nrow(finger_tapping_df), length(unique(finger_tapping_df$IDENT_SUBID)))
+
+list_duplicates <- which(duplicated(finger_tapping_df[,1]),)
+# now remove them to fix! 
+finger_tapping_df <- finger_tapping_df[-c(list_duplicates),]
+identical(nrow(finger_tapping_df), length(unique(finger_tapping_df$IDENT_SUBID)))
+save(finger_tapping_df, file = paste0("../../behavioral_data/1_finger_tapping_data/compiled/compiled_cleaned_finger_tapping_data.Rdata"))
+
+```
+
+
+# sanity checks
+## distribution of data looks reasonable
+```{r}
+hist(finger_tapping_df$thumb_key_count)
+hist(finger_tapping_df$ring_key_count)
+hist(finger_tapping_df$mean_RT_ring)
+hist(finger_tapping_df$mean_RT_thumb)
+hist(finger_tapping_df$median_RT_thumb)
+hist(finger_tapping_df$median_RT_ring)
+```
+
+## is median RT for ring > thumb? nope.
+```{r}
+ft_long_df <- finger_tapping_df %>%
+  gather(finger, median_RT, median_RT_thumb, median_RT_ring) %>%
+  mutate(finger = ifelse(finger == "median_RT_thumb", "thumb", "ring"))
+ft_long_df
+
+t.test(median_RT ~ finger, data = ft_long_df)
+```
+
+## is median RT for ring > thumb?
+```{r}
+ft_long_df <- finger_tapping_df %>%
+  gather(finger, median_RT, median_RT_thumb, median_RT_ring) %>%
+  mutate(finger = ifelse(finger == "median_RT_thumb", "thumb", "ring"))
+ft_long_df
+
+t.test(median_RT ~ finger, data = ft_long_df)
+```
+
+
+## is number of button presses thumb > ring?
+```{r}
+ft_long_df <- finger_tapping_df %>%
+  gather(finger, number_pressed, thumb_key_count, ring_key_count) %>%
+  mutate(finger = ifelse(finger == "thumb_key_count", "thumb", "ring"))
+ft_long_df
+
+t.test(number_pressed ~ finger, data = ft_long_df)
+```
+

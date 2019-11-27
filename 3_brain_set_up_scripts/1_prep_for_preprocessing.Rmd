@@ -1,0 +1,235 @@
+---
+title: "Prep imaging data for preprocessing"
+author: "Michelle Vantieghem"
+date: "Nov 26, 2019"
+output:
+    html_document:
+        toc: yes
+        toc_float:
+            smooth_scroll: true
+            collapsed: false
+        number_sections: true
+---
+
+# Deprecated script for preparing imaging data for preprocessing
+Must be run on elvis, where raw imaging data is stored, will not work on local computer! \
+Reorganizing the imaging files as they came in, during data collection \
+Done in stages durring data collection \
+All data is now collected, do not re-run. \
+final sublist of attempted scans: sublists/sublist_scans_2019-04-10.txt
+
+# Notes on updates
+Updating December 11, 2018 to also keep fieldmaps for functional data! will redo pipeline for registration to add fieldmap. FMRI_DISTORTION_AP & FMRI_DISTORTION_PA \
+ updated Jan 8, 2019 because fMRI finally stored in BIDS format! behavior still in source-data folders.
+
+```{r, include = F}
+library(R.utils)
+library(stringr)
+library(Hmisc)
+```
+
+# Make list of subjects who completed the effort reward game in the scanner
+only scanning data 
+```{r}
+# this is the main study directory where scan data lives on lux.
+bids_dir <- "/Volumes/danl/PACCT/subject_data/BIDS-raw/"
+
+# get a list of all subjects with data from your study
+# we are searching the main dir for folders with characters that match "PA" for PAxxx subjects
+sub_IDs_all <- list.files(bids_dir, pattern = "sub-PA")
+
+# get directory for each subject's effort data, use paste () function 
+# pasting the main study directory with their subjectID (which is the name of their folder)
+# e.g. /danl/PACCT/subject_data/Scanning/PA033
+sub_dirs <- paste0(bids_dir, sub_IDs_all)
+sub_scans <- list.dirs(path = sub_dirs)
+
+# from this list of all directories, find anatomcal directories.
+mprage_dirs <- sub_scans[grepl("anat", sub_scans)]
+fieldmap_dirs <- sub_scans[grepl("fmap", sub_scans)]
+
+# from this list of all directories, find func directories.
+func_dirs <- sub_scans[grepl("func", sub_scans)]
+# get only effort task scan files
+effort_scans <- list.files(path = func_dirs, pattern = "effort")
+# take only nifti files (not json)
+effort_scans <- effort_scans[grepl("nii.gz", effort_scans)] 
+
+# how many scans are there in this list? this includes runs
+(N_effort_scans_by_run <- length(effort_scans)) # 290 
+# how many subjects are there in this list? 
+# pull out only the PAxxx characters for SUBID
+Subjects_with_effort <- substr(effort_scans, 5, 9)
+length(Subjects_with_effort) # 290 
+# now get the unique SUBIDs (since duplicates means Run1 & Run2)
+Sublist_effort_scans <- unique(Subjects_with_effort) 
+N_subs_scan <- length(Sublist_effort_scans)
+print (paste0("Number of subjects with scanning data: ", N_subs_scan))
+```
+
+
+# Make sublists
+## update subject_list.txt file with full scans + behavior 
+with today's date.
+```{r}
+#sys.date() will print today's date.
+write.table(Sublist_effort_scans, paste0("sublists/all_scans_",Sys.Date(), ".txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+sublist_new <- data.frame(Sublist_effort_scans)
+names(sublist_new) <- "SUBJECTID"
+```
+
+## get list of new subjects who haven't been motion processed yet!
+deprecated - all data has been processed now. 
+```{r}
+sublist_old <- read.table("/Volumes/danl/PACCT/scripts/effort_reward/Sublists/preproc_sublists/sublist_scans_2019-03-20.txt")
+sublist_old$processed_already <- 1
+names(sublist_old) <- c("SUBJECTID", "processed_already")
+head(Sublist_effort_scans)
+
+merged_list <- merge(sublist_old, sublist_new, by = "SUBJECTID", all = T)
+head(merged_list)
+tail(merged_list)
+
+scans_to_process <- subset(merged_list, is.na(processed_already))
+scans_to_process
+
+write.table(scans_to_process, paste0("/Volumes/danl/PACCT/scripts/effort_reward/Sublists/preproc_sublists/scans_to_motion_process_", Sys.Date(), ".txt") , quote = F, col.names = F, row.names = F)
+```
+
+
+# set up model folders in "derivatives" directory for new subjects
+## check for files and make new folders if they don't exist yet
+```{r}
+
+derivatives_dir <-  ("/Volumes/danl/PACCT/subject_data/derivatives/effort_reward/")
+for (SUBJECTID in scans_to_process){
+  # if SUBDIR doesn't exist, make one! 
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID))){
+    dir.create(paste0(derivatives_dir, SUBJECTID))
+  } 
+  
+  # if effort dir doesn't exist, make one! 
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID, "/effort"))){
+    dir.create(paste0(derivatives_dir, SUBJECTID, "/effort"))
+  } 
+  
+  # if BOLD dir doesn't exist, make one
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID, "/effort/BOLD"))){
+    dir.create(paste0(derivatives_dir, SUBJECTID, "/effort/BOLD"))
+  } 
+  
+  # if model dir doesn't exist, make one! 
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID, "/effort/model"))){
+    dir.create(paste0(derivatives_dir, SUBJECTID, "/effort/model"))
+  } 
+  
+  # if onsets dir doesn't exist, make one!
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID, "/effort/model/onsets/"))){
+    dir.create(paste0(derivatives_dir, SUBJECTID, "/effort/model/onsets/"))
+  
+  }
+  
+    # if anatomical dir doesn't exist, make one!
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID, "/anatomical"))){
+    dir.create(paste0(derivatives_dir, SUBJECTID, "/anatomical/"))
+  }
+        # if fieldmap dir doesn't exist, make one!
+  if (!dir.exists(paste0(derivatives_dir, SUBJECTID, "/fmap"))){
+    dir.create(paste0(derivatives_dir, SUBJECTID, "/fmap/"))
+  
+  }
+}
+
+```
+
+
+## Move bold and anatomical and fieldmaps from source folder into derivative folders
+this is based on source-data structure, which is not pretty BIDS 
+```{r}
+# directory where original (source) scanning data is
+source_dir <- "/Volumes/danl/PACCT/subject_data/BIDS-raw/"
+derivatives_dir <- "/Volumes/danl/PACCT/subject_data/derivatives/effort_reward/"
+# PA085 FIXED 
+#Sublist_corrected <- Sublist_effort_scans_with_beh # 
+#Sublist_corrected <- Sublist_effort_scans
+#length(Sublist_corrected)
+
+# update this to re-run starting from different points! 
+#Sublist_run_loop <-  Sublist_corrected 
+
+# for each subject with scanning  and behavior data
+for (SUBJECTID in scans_to_process){
+  # for each run 
+  for (r in 1:2){
+   # specify run number for effort task 
+    RUNNUM <- paste0("RUN", r)
+    print (paste0(SUBJECTID, "_", RUNNUM))
+    
+    # go to this subject's BIDS source directory of functional data
+    # except not in BIDS yet, ths won't work! 
+    bids_subdir <- paste0("sub-", SUBJECTID)
+    copy_from <- paste0(source_dir, bids_subdir,"/ses-1/func/sub-", SUBJECTID, "_ses-1_task-effort_run-", r, "_bold.nii.gz")
+    
+     # make the directory for this run inside the BOLD folder
+    sub_deriv_dir <- paste0(derivatives_dir, SUBJECTID)
+    sub_effort_dir <- paste0(sub_deriv_dir, "/effort/")
+    sub_BOLD_dir <- paste0(sub_effort_dir, "BOLD/")
+    copy_to <- paste0(sub_BOLD_dir, "run", r, "/")
+     new_filename <- paste0(SUBJECTID, "_task-effort-run",r, "_bold.nii.gz")
+    # now only copy the data if it's not there already! 
+    if (!file.exists(paste0(copy_to, new_filename))){
+     # print ("making new directories")
+      # assume that none of these folders exist yet
+      #dir.create(sub_deriv_dir)
+      #dir.create(sub_effort_dir)
+      dir.create(sub_BOLD_dir)
+      dir.create(copy_to)
+    # copy it to your new folder. 
+        print (paste0(SUBJECTID, "copying files to new directory"))
+        file.copy(copy_from, paste0(copy_to, new_filename), overwrite= FALSE)
+        
+    }   
+  }
+
+#****** now get the anatomical scan!*****
+    copy_anat_from <- mprage_dirs[grepl(SUBJECTID,mprage_dirs)]
+   #list files in this directory
+    file_list <-  list.files(paste0(copy_anat_from))
+    # keep only the effort task files, and only from this run. 
+    mprage_files <- ifelse(grepl("nii.gz", file_list), file_list, NA)
+    # get rid of NAs
+    mprage_files <- mprage_files[!is.na(mprage_files)]
+    # get entire path to this file 
+    mprage_path <- paste0(copy_anat_from, "/", mprage_files)[1]
+   # set path for anatomical scans to be saved in derivatives dir.
+    copy_to_mprage <- paste0(derivatives_dir, SUBJECTID, "/anatomical/")    
+  
+  # check if anatomical folder is empty... 
+  if (length(list.files(copy_to_mprage)) ==0 ){
+  # copy the bold.nii.gz file to the new folder!
+      file.copy(mprage_path, paste0(copy_to_mprage, SUBJECTID, "_T1w.nii.gz"), overwrite= FALSE)
+  }
+    ##### COPY FIELDMAP TOP UP FILES 
+    copy_fieldmap_from <- fieldmap_dirs[grepl(SUBJECTID, fieldmap_dirs)]
+    # list files in this directory
+    file_list_AP <-  list.files(copy_fieldmap_from, pattern = "AP_epi.nii.gz")
+    fieldmap_AP <- file_list_AP[!grepl("dwi", file_list_AP)]
+    file_list_PA <-  list.files(copy_fieldmap_from, pattern = "PA_epi.nii.gz")
+    fieldmap_PA <- file_list_PA[!grepl("dwi", file_list_PA)]
+    
+     # get entire path to this file 
+    fieldmap_AP_files_path <- paste0(copy_fieldmap_from, "/", fieldmap_AP)
+    fieldmap_PA_files_path <- paste0(copy_fieldmap_from, "/", fieldmap_PA)
+     # set path for fieldmaps to go into bold directories. 
+    copy_to_fieldmap <- paste0(derivatives_dir, SUBJECTID, "/fmap/") 
+    
+  # check if  folder is empty... 
+  if (length(list.files(copy_to_fieldmap)) ==0 ){
+  # copy the bold.nii.gz file to the new folder!
+      file.copy( fieldmap_AP_files_path, paste0( copy_to_fieldmap, SUBJECTID, "_topup_AP.nii.gz"), overwrite= FALSE)
+      file.copy( fieldmap_PA_files_path, paste0( copy_to_fieldmap, SUBJECTID, "_topup_PA.nii.gz"), overwrite= FALSE)
+  }
+}
+
+
+```

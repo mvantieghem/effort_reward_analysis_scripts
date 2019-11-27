@@ -1,0 +1,424 @@
+---
+title: 'Progress report: usable scans with demographic info'
+author: "Michelle Vantieghem"
+date: "November 26, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      df_print: paged
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+#  Notes
+Updating June 6, 2019 to just include updated master variables! \
+updated August: to add PA257 \
+updated November 26, 2019: PA157 added due to updating the motion_info from 08-07-2019. usable scans changed from N = 126 to N = 127 \
+for some reason it wasn't being included before!
+
+```{r, include = F, warnings = F, error = F}
+library(stringi)
+library(tidyverse)
+library(readxl)
+library(ggplot2)
+library(foreign)
+```
+
+
+# MERGE TOGETHER SCAN & BEH DATA 
+
+## open behavior data 
+compiled behavior from effort, post-test, and finger tapping - with QC variables added
+includes all subjects who ever did effort task, no one excluded yet.
+```{r}
+load("../../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_with_QC.Rdata")
+nrow(beh_master)
+```
+
+
+##  merge behavior  with demo
+Impt note: behavior master is by RUN, and demographics is by SUBJECT.
+```{r}
+load("../2_beh_QC_and_demo/data/demographics_from_master_20191118.Rdata")
+# all is NOT true, because we only want to keep subjects with valid data!! 
+
+demo_behavior <- merge(beh_master, demo, by = "SUBJECTID") %>%
+  mutate(RunNumber = Run_number) %>%
+  mutate(PI_DA = ifelse(GROUP == "C" | GROUP == "DC", 0, 1))
+
+```
+
+
+## get motion info 
+```{r}
+# make sure you're loading the most updated version
+load("../4_brain_motion_QC/data/compiled_motion_info_2019-08-07.Rdata")
+
+# PA034 only did half a run in scanner, and then did the PILOT version outside scanner... omit this subject.
+scan_df <- merged_df %>%
+  filter(!SUBJECTID =="PA034") %>%
+  rename(scan_QC_motion_include = include,
+         scan_QC_complete_run = complete_scan) %>%
+  mutate(RunNumber = ifelse(RunNumber == "run1", "RUN1", "RUN2"))
+```
+
+## merge scanning data with behavior & demo.
+make new variables to define behavior and scan inclusion criterion
+```{r, include =F, warnings = F, error = F}
+
+df_by_run <- merge(demo_behavior,  scan_df, by = c("SUBJECTID", "RunNumber"), all = T)  %>%
+  mutate(behavior_usable = ifelse(beh_QC_complete_run == 1 & 
+                                            beh_QC_choices_resp_70_include == 1 &
+                                             beh_QC_tooslow_50_include == 1, 1, 0), 
+           scan_and_beh_runs_usable = ifelse(beh_QC_complete_run == 1 & 
+                                            beh_QC_choices_resp_70_include == 1 &
+                                             beh_QC_tooslow_50_include == 1 & 
+                                             scan_QC_complete_run == 1 & 
+                                             scan_QC_motion_include, 1, 0))
+nrow(df_by_run)
+```
+
+# ORGANIZE BEHAVIOR + SCAN DATA 
+## make wide version of behavioral data for demo tables.
+```{r}
+df_wide <- df_by_run %>%
+  group_by(SUBJECTID) %>%
+  # getting demographics 
+    dplyr::summarize(AGE = mean(AGE, na.rm = T), 
+            SEX = mean(SEX, na.rm = T),
+            Race = Race[1], 
+            Ethnicity = Ethnicity[1],
+            GROUP = GROUP [1],
+            PI_DA = mean(PI_DA, na.rm = T),
+            # getting beh QC 
+            beh_QC_complete_runs = sum(beh_QC_complete_run, na.rm = T), 
+            beh_QC_choices_resp_70_include_runs = sum(beh_QC_choices_resp_70_include, na.rm = T), 
+            beh_QC_tooslow_50_include_runs = sum(beh_QC_tooslow_50_include, na.rm = T),
+            # scan QC data
+             scan_QC_complete_runs = sum(scan_QC_complete_run, na.rm = T),
+             scan_QC_motion_usable_runs = sum(scan_QC_motion_include, na.rm = T), 
+            beh_runs_usable = sum(behavior_usable, na.rm = T),
+            scan_and_beh_runs_usable = sum(scan_and_beh_runs_usable, na.rm = T), 
+            # getting adverages across both runs, if they have 2 runs
+            total_censored_TRs = sum(censored_TRs, na.rm = T), 
+            prop_censored_TRs = (sum(censored_TRs, na.rm = T)/ sum(TRs, na.rm = T)), 
+            meanFD_all_TRs = mean(meanFD_all_trs, na.rm = T), 
+            meanFD_included_trs = mean(meanFD_included_trs, na.rm = T))
+
+save(df_wide, file = paste0("data/all_data_QC_and_demographics_wide", Sys.Date(), ".Rdata"))
+```
+
+## make long version of dataset with demographics
+```{r}
+# also save data for all subjects, prior to exclusion.
+save(df_by_run, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_not_filtered_with_demo.Rdata")
+
+# now save filtered version, only usable behavior 
+df_by_run_usable_beh <- df_by_run %>%
+  filter(behavior_usable == 1)
+nrow(df_by_run_usable_beh)
+length(unique(df_by_run_usable_beh$SUBJECTID)) # 178 subjects! 
+
+save(df_by_run_usable_beh, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_filtered_usable_with_demo.Rdata")
+```
+
+
+# make sublist for preproc-level1 prrocessing of brain data
+## include for any usable data
+```{r}
+df_by_subject <- df_by_run %>%
+  group_by(scan_and_beh_runs_usable, SUBJECTID) %>% 
+  summarize(Number_of_runs = n())
+
+# how many subjects have any usable data 
+keep_any_scans <- df_by_subject %>% 
+  filter(scan_and_beh_runs_usable == 1)
+nrow(keep_any_scans) # still 127. 
+# save the list: by subject 
+write.table(keep_any_scans$SUBJECTID, file =  paste0("sublists/include_scan_and_beh_by_subject", Sys.Date(), ".txt"), quote= F, row.names =  F, col.names =  F)
+
+# how many runs have any usable data 
+keep_any_scans <- df_by_run %>% 
+  filter(scan_and_beh_runs_usable == 1) %>%
+  select(SUBJECTID, RunNumber)
+nrow(keep_any_scans) # still 127. 
+
+# save the list 
+write.table(keep_any_scans, file = paste0("sublists/include_scan_and_beh_by_run", Sys.Date(), ".txt"), quote= F, row.names =  F, col.names =  F)
+
+```
+
+
+## 2 runs of usable data
+```{r}
+
+#how many subjects have 2 runs of usable data
+keep_2_runs <- df_by_subject %>% 
+  filter(scan_and_beh_runs_usable == 1 & Number_of_runs == 2)
+nrow(keep_2_runs)
+
+write.table(keep_2_runs$SUBJECTID, file =  paste0("sublists/sublists_include_2_runs", Sys.Date(), ".txt"), quote= F, row.names =  F, col.names =  F)
+```
+
+### 1 run 
+```{r}
+# how many subjects have 1 run of usable data
+keep_1_run <- df_by_subject %>% 
+  filter(scan_and_beh_runs_usable == 1 & Number_of_runs == 1)
+nrow(keep_1_run)
+write.table(keep_1_run$SUBJECTID, file =   paste0("sublists/sublists_include_1_run", Sys.Date(), ".txt"), quote= F, row.names =  F, col.names =  F)
+
+# which run to keep?
+include_1_run <- df_by_run %>%
+  dplyr::select(SUBJECTID, RunNumber, scan_and_beh_runs_usable) %>%
+  # take only the subejcts with 1 usable run
+  filter(SUBJECTID %in% keep_1_run$SUBJECTID) %>%
+  # now only keep runs with usable = 1
+  filter(scan_and_beh_runs_usable == 1)
+
+
+# run 1 only 
+run1_only <- include_1_run %>%
+  filter(RunNumber == "RUN1")
+
+write.table(run1_only$SUBJECTID, file =   paste0("sublists/sublists_include_Run1_only", Sys.Date(), ".txt"), quote= F, row.names =  F, col.names =  F)
+
+# run 2 only 
+run2_only <- include_1_run %>%
+  filter(RunNumber == "RUN2")
+
+write.table(run2_only$SUBJECTID, file =   paste0("sublists/sublists_include_Run2_only", Sys.Date(), ".txt"), quote= F, row.names =  F, col.names =  F)
+```
+
+
+
+# DEMOGRAPHICS FOR BEH AND SCAN.
+
+## summary of total vs. unusable data overall 
+```{r}
+inclusion_table <- df_wide %>%
+  dplyr::summarize (n_any_data = n(), 
+                    n_complete_behavior_subjects = sum(ifelse(beh_QC_complete_runs > 0, 1, 0), na.rm = T),
+                    n_complete_behavior_runs = sum(beh_QC_complete_runs, na.rm = T),
+                    n_behavior_usable_subjects = sum(ifelse(beh_runs_usable > 0, 1, 0), na.rm = T),
+                    n_behavior_usable_runs = sum(beh_runs_usable, na.rm = T), 
+                    n_complete_scan_subjects = sum(ifelse(scan_QC_complete_runs > 0, 1, 0), na.rm = T),
+                    n_complete_scan_runs = sum(scan_QC_complete_runs, na.rm = T),
+                    n_motion_usable_subjects = sum(ifelse(scan_QC_motion_usable_runs > 0, 1, 0), na.rm = T),
+                    n_motion_usable_runs = sum(scan_QC_motion_usable_runs, na.rm = T), 
+                    n_scan_and_beh_runs_usable_subjects = sum(ifelse(scan_and_beh_runs_usable > 0, 1, 0), na.rm = T),
+                    n_scan_and_beh_runs_usable_runs = sum(scan_and_beh_runs_usable, na.rm = T))
+
+better_inclusion_table <- t(inclusion_table)
+
+better_inclusion_table 
+save(better_inclusion_table, file = "tables/entire_dataset_inclusion_table.Rdata")
+```
+
+## summary of total vs. usable data by group.
+```{r}
+inclusion_by_group <- df_wide %>%
+  # exclude ppl withno usable data
+ # filter (usable_runs != 0) %>%
+  group_by(PI_DA) %>% 
+  dplyr::summarize (n_any_data = n(), 
+                    n_complete_behavior_subjects = sum(ifelse(beh_QC_complete_runs > 0, 1, 0), na.rm = T),
+                    n_complete_behavior_runs = sum(beh_QC_complete_runs, na.rm = T),
+                    n_behavior_usable_subjects = sum(ifelse(beh_runs_usable > 0, 1, 0), na.rm = T),
+                    n_behavior_usable_runs = sum(beh_runs_usable, na.rm = T), 
+                    n_complete_scan_subjects = sum(ifelse(scan_QC_complete_runs > 0, 1, 0), na.rm = T),
+                    n_complete_scan_runs = sum(scan_QC_complete_runs, na.rm = T),
+                    n_motion_usable_subjects = sum(ifelse(scan_QC_motion_usable_runs > 0, 1, 0), na.rm = T),
+                    n_motion_usable_runs = sum(scan_QC_motion_usable_runs, na.rm = T), 
+                    n_scan_and_beh_runs_usable_subjects = sum(ifelse(scan_and_beh_runs_usable > 0, 1, 0), na.rm = T),
+                    n_scan_and_beh_runs_usable_runs = sum(scan_and_beh_runs_usable, na.rm = T))
+inclusion_by_group
+save(inclusion_by_group, file = "tables/entire_dataset_inclusion_by_group.Rdata")
+
+# comps only 
+inclusion_COMPS <- inclusion_by_group %>% 
+  filter(PI_DA == 0) %>% 
+  select(-(PI_DA))
+t(inclusion_COMPS)
+save(inclusion_COMPS, file = "tables/COMP_dataset_inclusion.Rdata")
+
+```
+
+## make behavior sample demo table of only usable subjects. 
+```{r}
+behavior_demo_by_group <- df_wide %>%
+  # exclude ppl withno usable data
+  filter (beh_runs_usable > 0) %>%
+  group_by(PI_DA) %>% 
+  dplyr::summarize (n = n(), 
+             mean_age = mean(AGE, na.rm = T), 
+             min_age = min(AGE, na.rm = T), 
+             max_age = max(AGE, na.rm = T), 
+             prop_female = mean(SEX, na.rm = T), 
+             N_Female = sum(SEX, na.rm = T))
+
+behavior_demo_by_group
+save(behavior_demo_by_group, file = "tables/demo_table_usable_behavior.Rdata")
+
+```
+
+## make scan sample demo table of usable vs. unusable 
+### for 0,1,2 of usable runs
+```{r}
+summary_by_group <- df_wide %>%
+  # exclude ppl withno usable data
+  filter (scan_QC_complete_runs != 0) %>%
+  group_by(PI_DA, scan_and_beh_runs_usable) %>% 
+  dplyr::summarize (n = n(), 
+             mean_age = mean(AGE, na.rm = T), 
+             min_age = min(AGE, na.rm = T), 
+             max_age = max(AGE, na.rm = T), 
+             prop_female = mean(SEX, na.rm = T), 
+             N_Female = sum(SEX, na.rm = T))
+
+summary_by_group # all subjects
+save(summary_by_group, file = "tables/demo_table_usable_vs_unusable_scans.Rdata")
+
+
+COMP_summary <- summary_by_group %>%
+  filter(PI_DA == 0) %>%
+  select(-PI_DA) # only comps 
+
+save(COMP_summary, file = "tables/COMP_demo_table_usable_vs_unusable_scans.Rdata")
+```
+
+### for any usable runs
+```{r}
+all_usable_by_group <- df_wide %>%
+  # exclude ppl withno usable data
+  filter (scan_and_beh_runs_usable != 0) %>%
+  group_by(PI_DA) %>% 
+  summarize (n = n(), 
+             mean_age = mean(AGE, na.rm = T), 
+             min_age = min(AGE, na.rm = T), 
+             max_age = max(AGE, na.rm = T), 
+             sd_age = sd(AGE, na.rm = T),
+             prop_female = mean(SEX, na.rm = T), 
+             N_Female = sum(SEX, na.rm = T))
+all_usable_by_group 
+sum(all_usable_by_group$n) # this changed from N= 126 to 127 after adding PA255 on Nov 26, 2019.
+
+save(all_usable_by_group, file = paste0("tables/demo_table_any_usable_scans.Rdata"))
+
+COMP_all_usable <- all_usable_by_group %>%
+  filter(PI_DA == 0) %>%
+  select(-PI_DA)
+
+save(COMP_all_usable, file = "tables/COMP_demo_table_any_unusable_scans.Rdata")
+```
+
+# check group distribution by age
+```{r}
+ggplot(subset(df_wide,scan_and_beh_runs_usable  > 0 & AGE > 5 & !is.na(GROUP)), aes(AGE)) + geom_histogram(binwidth= 1,fill  = "dark blue", alpha = 0.5) +
+   theme_classic () + facet_grid (~ PI_DA)
+
+```
+
+```{r}
+ggplot(data = subset(all_usable_by_group, !is.na(PI_DA)), 
+       aes(x = as.factor(PI_DA), y = mean_age)) +
+  geom_violin(data = subset(df_wide, scan_and_beh_runs_usable >0 & !is.na(PI_DA) & AGE> 5), 
+              aes(x = as.factor(PI_DA), y= AGE)) +
+  geom_errorbar( aes(ymin= mean_age - sd_age,ymax= mean_age + sd_age, width = .1)) +
+  geom_jitter(data = subset(df_wide, scan_and_beh_runs_usable >0 & !is.na(PI_DA) & AGE > 5), 
+              aes(x = as.factor(PI_DA), y= AGE), 
+             alpha = 0.5, width= 0.1) + 
+  theme_classic () + geom_point(color = "blue" , size = 3) 
+
+```
+
+### for 2 usable runs
+```{r}
+scan_2runs_usable_by_group <- df_wide %>%
+  # exclude ppl withno usable data
+  filter (scan_and_beh_runs_usable  == 2) %>%
+  group_by(PI_DA) %>% 
+  summarize (n = n(), 
+             mean_age = mean(AGE, na.rm = T), 
+             min_age = min(AGE, na.rm = T), 
+             max_age = max(AGE, na.rm = T), 
+             sd_age = sd(AGE, na.rm = T),
+             prop_female = mean(SEX, na.rm = T), 
+             N_Female = sum(SEX, na.rm = T))
+
+scan_2runs_usable_by_group 
+
+usable_2run_scans_N <- sum(scan_2runs_usable_by_group$n)
+
+save(scan_2runs_usable_by_group, file = paste0("tables/demo_table_2_usable_runs.Rdata"))
+#write.csv(scan_2runs_usable_by_group, file = paste0("tables/demo_table_2_usable_runs.csv"))
+```
+
+```{r}
+
+ggplot(subset(df_wide, scan_and_beh_runs_usable >1), aes(AGE)) + geom_histogram(binwidth=1) +
+   theme_classic () + facet_grid (~ PI_DA)
+```
+
+```{r}
+ggplot(data = scan_2runs_usable_by_group,
+        aes(x = as.factor(PI_DA), y = mean_age)) +
+  geom_violin(data = subset(df_wide, scan_and_beh_runs_usable >1), 
+              aes(x = as.factor(PI_DA), y= AGE)) +
+  geom_errorbar( aes(ymin= mean_age - sd_age,ymax= mean_age + sd_age, width = .1)) +
+  geom_point(data = subset(df_wide, scan_and_beh_runs_usable >1),
+             aes(x =as.factor(PI_DA), y= AGE), alpha = 0.5) + 
+  theme_classic () + geom_point(color = "blue" , size = 3) 
+
+```
+
+
+# FINAL BREAKDOWN OF USABLE DATA 
+```{r}
+inclusion_table
+print(paste0('Total behavior subjects: ', inclusion_table$n_any_data))
+print(paste0('Usable behavior subjects: ', inclusion_table$n_behavior_usable_subjects))
+print(paste0('Proportion usable behavior: ', inclusion_table$n_complete_behavior_subjects/ inclusion_table$n_any_data))
+
+print(paste0('Total scan subjects: ', inclusion_table$n_complete_scan_subjects))
+print(paste0('Usable scan motion subjects: ', inclusion_table$n_motion_usable_subjects))
+print(paste0('Usable scan motion & behavior subjects: ', inclusion_table$n_scan_and_beh_runs_usable_subjects))
+print(paste0('Proportion usable scans: ', inclusion_table$n_scan_and_beh_runs_usable_subjects/inclusion_table$n_complete_scan_subjects))
+```
+
+
+## use this to make enrollment report sheet for NIH RPPR
+complted on august 1, 2019 for NIH NRSA renewal. Will be identical for subsequent report because no further data collection occurred.
+```{r, include = F, eval = F, echo = F} 
+summary(as.factor(df_wide$Race))
+summary(as.factor(df_wide$Ethnicity))
+
+
+Inclusion_enrollment <- df_wide %>%
+  mutate(Race = ifelse(Race == "Other" | is.na(Race), "Unknown", as.character(Race)), 
+         Ethnicity = ifelse(is.na(Ethnicity), "Unknown", as.character(Ethnicity)),
+         Gender = ifelse(SEX == 0, "Male", "Female")) %>%
+  select(Race, Ethnicity, Gender, AGE) %>%
+  rename( Age = AGE) %>%
+  mutate('Age Unit' = "years", 
+         Age = round(Age))
+head(Inclusion_enrollment)
+
+summary(as.factor(Inclusion_enrollment$Race))
+summary(as.factor(Inclusion_enrollment$Ethnicity))
+
+df_wide$SUBJECTID[is.na(df_wide$AGE)]
+
+df_wide$AGE[is.na(df_wide$AGE)] <- 7
+
+Table <- Inclusion_enrollment %>%
+  group_by(Race, Ethnicity, Gender) %>%
+summarize(n = n())
+
+#write.csv(Inclusion_enrollment, "tables/Inclusion_enrollment_2019_Partipant_Level_Data_Effort_2019-08-01.csv", row.names = F)
+
+```

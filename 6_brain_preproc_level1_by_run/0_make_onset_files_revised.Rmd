@@ -1,0 +1,258 @@
+---
+title: "Make onset files for effort reward"
+author: "Michelle Vantieghem"
+date: "Nov 26, 2019"
+output:
+    html_document:
+        toc: yes
+        toc_float:
+            smooth_scroll: true
+            collapsed: false
+        number_sections: true
+---
+
+# NOTES 
+updated: fixing some bugs, July 5, 2018 \
+updating April 12, 2019: (1) combining turtles and missed choices as one confound file \
+(2) making it blank if there are no confounds instead of 000 for FSL. \
+updating September 2019: going back to 000 which I need for my model!! 
+updating November 26, 2019 to add PA255 - was excluded at prior step before. 
+
+```{r}
+library(tidyverse)
+```
+
+# 1. get most current subject list of usable scans + behavior 
+```{r}
+# this was generated in the step prior
+subject_list <- read.table("../5_brain_behav_inclusion/sublists/include_scan_and_beh_by_run2019-11-27.txt")
+names(subject_list) <- c("SUBJECTID", "RunNumber")
+nrow(subject_list) # 224 runs .
+```
+
+# 2. read files into R - only for these usable runs of usable subjects.
+```{r}
+# get all behavior data files
+filepath <- "../../behavioral_data/3_effort_task_data/raw_scan_version/"
+filelist <- list.files(filepath, pattern = "csv")
+
+# make empty data list.
+data.list <- list()  
+
+for(i in filelist){
+  file <- paste0(filepath, i)
+  # GET SUBJECTID AND RUNNUM
+  subjectid <- substr(i, 1, 5)
+  run_num <- paste0("RUN",substr(i, 10,10))
+  # only if subject in usable list...
+  if (subjectid %in% subject_list$SUBJECTID){
+      sub_runs_usable <- subject_list %>%
+        filter(SUBJECTID == subjectid)
+        # and only if this run is usable...
+      if (run_num %in% sub_runs_usable$RunNumber){
+         # assign data frame for each subject 
+          data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
+          data.file <- data.frame(data.file)
+          names(data.file)
+          # add data for each subject to list of data frames 
+          data.list[[i]] <- data.file
+      }
+  }
+}
+length(data.list) # 224
+
+```
+
+# 3. Make onset files 
+For each run for each subject for each stim type, make the onset files and save them.
+new directory - saving onsets in FSL_pipeline all together, instead of indiv. subj folders.
+```{r}
+# run a loop for each dataframe in the list
+# there will be 2 dataframes for each subject (2 runs)
+stim_list <- c("Choice_easy", "Choice_hard", "Choice_missed", "Feedback_easy_setback", "Feedback_hard_setback", "Feedback_easy_reward", "Feedback_hard_reward", "Feedback_too_slow", "Effort_hard", "Effort_easy")
+# designate where you will save the onset files to on the server.
+# note tht you are saving these into the derivatives folder, where your processed data lives
+
+for (i in 1:length(data.list)){
+  # save the dataframe 
+  df <- data.list[[i]]
+  SUBJECTID <- substr(names(data.list)[i], 1, 5)
+  RunNumber <- paste0("run", substr(names(data.list)[i], 10, 10))
+  # make a folder to save output
+  output.directory <- paste0("onset_files/")
+  dir.create(paste0(output.directory, SUBJECTID)) 
+  dir.create(paste0(output.directory, SUBJECTID, "/", RunNumber))
+  print(paste0("making onsets for ", SUBJECTID))
+  
+  # clean up file
+  df2 <- df %>%
+    # rename these to reflect feedback
+      rename(Feedback_Phase_Onset = Reward_Phase_Onset, 
+             Feedback_Phase_Offset = Reward_Phase_Offset) %>%
+    # mark certain stim types in the dataframe
+      mutate(Choice_easy = ifelse(Effort_Choice == "Easy",1,0),
+             Choice_hard = ifelse(Effort_Choice == "Hard", 1, 0),
+             Choice_missed = ifelse(Effort_Choice == "Miss", 1, 0),
+             Effort_easy = ifelse(Effort_Choice == "Easy", 1, 0),
+             Effort_hard = ifelse(Effort_Choice == "Hard", 1, 0),
+             Feedback_easy_reward = ifelse(Accuracy == 1 & Reward_received == 1 & Effort_Choice == "Easy", 1,0),
+             Feedback_easy_setback = ifelse(Accuracy == 1 & Reward_received == 0 & Effort_Choice == "Easy", 1,0),
+             Feedback_hard_reward = ifelse(Accuracy == 1 &  Reward_received == 1 & Effort_Choice == "Hard", 1,0),
+             Feedback_hard_setback = ifelse(Accuracy == 1 &  Reward_received == 0 & Effort_Choice == "Hard", 1,0),
+             Feedback_too_slow = ifelse(Accuracy == 0, 1, 0))
+    
+    # generate onset lists...
+    for (stim_type in stim_list){
+      
+      # get onsets and offsets names 
+      phase <- strsplit(stim_type, "_")[[1]][1]
+      stim_type_onset <- paste0(phase, "_Phase_Onset")
+      stim_type_offset <- paste0(phase, "_Phase_Offset")
+      
+      # create a marker in the dataframe that represents when this stim type happened.
+      df2$df_stim <- df2[grepl(stim_type, names(df2))]
+      trial_numbers <- sum(df2$df_stim, na.rm = T)
+      
+      # if they have trials of this condition... make onsets! 
+      if (trial_numbers > 0){
+      onsets <- df2  %>%
+        filter(df_stim == 1) %>%
+        select(stim_type_onset)
+      offsets <- df2 %>%
+        filter(df_stim == 1) %>%
+        select(stim_type_offset)
+      # calculate trial duration
+      duration <- offsets - onsets 
+      # make 3 column format
+      onset_file <- cbind(onsets, rep(duration, length(onsets)), rep(1, length(onsets)))
+      # remove NAs
+      onset_file2 <- onset_file %>% 
+        filter(!is.na(onsets))
+        
+      }else{
+        # if there are no onsets for this condition, make it 3 zeros.
+        onset_file2 <-cbind(0,0,0)
+      }
+      write.table(onset_file2, paste0(output.directory, SUBJECTID, "/", RunNumber, "/", stim_type, ".txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+  }
+}
+
+```
+
+# combine certain sets of stim files
+
+## first make a function that returns NAs for blank text files when you read them in. (instead of crashing)
+```{r}
+#
+deal_with_blank_files <- function(f){
+   # try to read the file 
+   data <- try(read.table(f, header = F))
+   # if there is an error, return NAs instead.
+         if (inherits(data, "try-error")) {
+         #  print ("ERROR")
+           # return 3 NAs for each column of onset file.
+           data <- c(NA,NA,NA)
+           print ("error")
+           # otherwise, return the data! 
+           # otherwise, return the data! 
+          } else { print ("empty!")
+          }
+  return(data)
+}
+```
+
+```{r}
+
+# now run loop for all subjects ! 
+for (sub in subject_list$SUBJECTID){
+  print(sub)
+  output.directory <- paste0("onset_files/", sub, "/")
+  sub_df <- subject_list %>%
+    filter(SUBJECTID == sub)
+  for (RunNumber in sub_df$RunNumber){
+   # print(RunNumber)
+      ## MISSES
+      missed_choices <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Choice_missed.txt"))
+      too_slow <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Feedback_too_slow.txt"))
+     
+     missed_trials <- na.omit(rbind(too_slow, missed_choices))
+    # reorder these to make sure in time order! 
+      if (sum(missed_trials$V3) != 0){
+          missed_trials2 <- missed_trials %>% arrange(V1)  %>%
+            filter(! V3 == 0)
+      } else {
+        missed_trials2 <- cbind(0,0,0)
+      }
+      write.table(missed_trials2, paste0(output.directory, RunNumber, "/missed_trials.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+  
+      
+      ## ALL CHOICES 
+      hard <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Choice_hard.txt"))
+      easy <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Choice_easy.txt"))
+      choice_trials <- na.omit(rbind(hard, easy))
+      if (sum(choice_trials$V3) != 0){
+          choice_trials2 <- choice_trials %>% arrange(V1)  %>%
+            filter(! V3 == 0)
+      } else {
+        choice_trials2 <- cbind(0,0,0)
+      }
+      write.table(choice_trials2, paste0(output.directory, RunNumber, "/Choice_trials.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+      
+      ## ALL FEEDBACKmissed_choices <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Choice_missed.txt"))
+      hard_setback <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Feedback_hard_setback.txt"))
+      hard_reward <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Feedback_hard_reward.txt"))
+      easy_setback <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Feedback_easy_setback.txt"))
+      easy_reward <- deal_with_blank_files(paste0(output.directory, RunNumber, "/Feedback_easy_reward.txt"))
+
+      # lots of combos to make here. 
+      feedback_hard <- na.omit(rbind(hard_setback, hard_reward))
+            if (sum(feedback_hard$V3) !=0) {
+          feedback_hard2 <- feedback_hard %>% arrange(V1) %>%
+            filter(! V3 == 0)
+      } else {
+        feedback_hard2 <- cbind(0,0,0)
+      }
+      write.table(feedback_hard2, paste0(output.directory, RunNumber, "/feedback_hard.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+      feedback_easy <- na.omit(rbind(easy_setback, easy_reward))
+      if (sum(feedback_easy$V3) !=0) {
+          feedback_easy2 <- feedback_easy %>% arrange(V1)  %>%
+            filter(! V3 == 0)
+      } else {
+        feedback_easy2 <- cbind(0,0,0)
+      }
+     write.table(feedback_easy2, paste0(output.directory, RunNumber, "/feedback_easy.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+      feedback_reward <- na.omit(rbind(hard_reward, easy_reward))
+      if (sum(feedback_reward$V3) !=0) {
+          feedback_reward2 <- feedback_reward %>% arrange(V1) %>%
+            filter(! V3 == 0)
+      } else {
+        feedback_reward2 <- cbind(0,0,0)
+      }
+      write.table(feedback_reward2, paste0(output.directory, RunNumber, "/feedback_reward.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+      
+      feedback_setback <- na.omit(rbind(hard_setback, easy_setback))
+      if(sum(feedback_setback$V3) !=0) {
+          feedback_setback2 <- feedback_setback %>% arrange(V1) %>%
+            filter(! V3 == 0)
+      } else {
+        feedback_setback2 <- cbind(0,0,0)
+      }
+      write.table(feedback_setback2, paste0(output.directory, RunNumber, "/feedback_setback.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+
+      feedback_trials <- na.omit(rbind(hard_setback, hard_reward, easy_setback, easy_reward))
+      if (sum(feedback_trials$V3) != 0) {
+          feedback_trials2 <- feedback_trials %>% arrange(V1) %>%
+            filter(! V3 == 0)
+      } else {
+        feedback_trials2 <- cbind(0,0,0)
+      }
+      write.table(feedback_trials2, paste0(output.directory, RunNumber, "/feedback_trials.txt"), col.names = FALSE, row.names =  FALSE, quote = FALSE)
+      # reorder these to make sure in time order! 
+ 
+  }
+}
+```
+

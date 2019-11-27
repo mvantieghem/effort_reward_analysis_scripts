@@ -1,0 +1,68 @@
+---
+title: "checking_proc_lists"
+author: "Michelle.VanTieghem"
+date: "6/11/2019"
+output: html_document
+---
+
+# Notes
+check that all subjects successfully ran through level1 processing
+there are 2 separate level1 models: collapsed EVs and all EVS
+
+
+# 1. get included list of runs/subjects
+```{r}
+include <- read.table("../../Sublists/level1_sublists/sublist_include_scan_and_beh_for_level1_2019-04-30.txt", header = T)
+head(include)
+```
+
+
+# 2. get list of successfully processed runs with collapsed EV level1 model.
+```{r}
+library(tidyverse)
+processed <- read.table("../../Sublists/level1_sublists/sublist_lev1_collapsed_EVs.txt") %>%
+  mutate(SUBJECTID = substr(V1, 1, 5),
+         RunNumber = substr(V1, 25, 28)) %>%
+  rename(proc_done = V1)
+```
+
+## merge 
+```{r}
+
+compare <- merge(include, processed, by = c("SUBJECTID", "RunNumber"))
+head(compare)
+```
+
+## are any runs missing from the list? no!
+(indicating that their processing failed)
+```{r}
+
+sum(is.na(compare$proc_done))
+
+```
+
+# 3. get list of successfully processed all EV model
+```{r}
+library(tidyverse)
+processed2 <- read.table("../../Sublists/level1_sublists/sublist_lev1_all_EVs.txt") %>%
+  mutate(SUBJECTID = substr(V1, 1, 5),
+         RunNumber = substr(V1, 25, 28)) %>%
+  rename(proc_done = V1)
+head(processed2)
+```
+
+## merge 
+```{r}
+
+compare2 <- merge(include, processed2, by = c("SUBJECTID", "RunNumber"))
+head(compare2)
+```
+
+## are any runs missing from the list? no!
+(indicating that their processing failed)
+```{r}
+
+sum(is.na(compare2$proc_done))
+
+```
+
