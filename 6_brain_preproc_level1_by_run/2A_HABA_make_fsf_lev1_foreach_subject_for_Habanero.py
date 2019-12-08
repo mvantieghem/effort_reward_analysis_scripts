@@ -58,7 +58,7 @@ for dir in list(subdirs):
   # note: for habanero version, we are also changing the paths to the data and FSL!
   replacements = {'SUBNUM':subnum, 'TRNUM':ntime, 'RUNNUM':runnum, '/danl/':habanero_path, '/usr/share/fsl/5.0': fsl_path}
   # get your template as the input here 
-  with open("%spreproc_lev1_fsfs/preproc_level1_template_2019-10-04.fsf"%(fsfdir)) as infile: 
+  with open("%stemplate_preproc_lev1/preproc_level1_template_2019-10-04.fsf"%(fsfdir)) as infile: 
  
   # outfile = useable fsf file that is being created for every subject and every run 
     with open("%spreproc_lev1_fsfs/%s_effort_%s_lev1.fsf"%(fsfdir, subnum, runnum), 'w') as outfile:

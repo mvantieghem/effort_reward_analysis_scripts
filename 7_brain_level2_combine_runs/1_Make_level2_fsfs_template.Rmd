@@ -1,0 +1,43 @@
+---
+title: "level 2 template"
+author: "Michelle Vantieghem"
+date: "February 15, 2018"
+output:
+    html_document:
+        toc: yes
+        toc_float:
+            smooth_scroll: true
+            collapsed: false
+        number_sections: true
+---
+
+# note: June 2019
+we have 2 models: collapsed EVs and all EVs
+
+
+# Make your level2 fsf template in the FEAT GUI 
+Script is saved in template_lev2_fsf 
+This script will run level2 statistics for each subject
+This combines runs (if more than 1 run)
+
+# Higher-level analysis 
+## Data
+inputs are lower level feat directors
+choose 2 input directories (run 1 and run 2 from that subject)
+choose where to save output directory (lev2.feat)
+use all lower level copes (unless there are some you don't care about bringing to group level, like confounds).
+
+## Stats
+### Full Model Set Up
+#### EV list:
+mean (inputs correspond to number of runs)
+1
+1
+
+#### Contrast list:
+run_mean 1 (takes the average of each cope across 2 runs for this subj)
+
+## Post-stats 
+use default cluster threshold
+note: this is for ease of visualization ONLY
+these data should not be considered legit for clusters on one subject.

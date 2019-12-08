@@ -73,6 +73,7 @@ cope_number <- c(1:length(cope_list))
 cope_key <- data.frame(cope_list, cope_number)
 
 cope_key
+save(cope_key, file = "complete_EV_model_cope_key.Rdata")
 ```
 
 #### cope matrix 

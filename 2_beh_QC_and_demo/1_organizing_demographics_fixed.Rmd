@@ -25,10 +25,10 @@ library(readxl)
 library(tidyverse)
 
 
-master <- read_excel("../../subj_demo/masters/MASTER_20191118.xlsx") 
+master <- read_excel("../../subj_demo/masters/MASTER_20191118_updated_MICM.xlsx") 
 demo <- master %>%
   select(IDENT_SUBID, GROUP, SUBAGE_Session1, DEM_3_GENDER_CHILD, WASI_FSIQ, 
-          starts_with("COPE"), INC_ITN_HOUSE, starts_with("CGH")) %>%
+           INC_ITN_HOUSE) %>%
   mutate(SUBJECTID =substr(IDENT_SUBID, 1, 5), 
 # comps are the non-adopted kids!
         PI_DA = as.factor(ifelse(GROUP == "C" | GROUP == "DC", 0, 1)))  %>%

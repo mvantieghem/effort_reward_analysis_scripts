@@ -48,7 +48,9 @@ load("../2_beh_QC_and_demo/data/demographics_from_master_20191118.Rdata")
 
 demo_behavior <- merge(beh_master, demo, by = "SUBJECTID") %>%
   mutate(RunNumber = Run_number) %>%
-  mutate(PI_DA = ifelse(GROUP == "C" | GROUP == "DC", 0, 1))
+  mutate(PI_DA = ifelse(GROUP == "C" | GROUP == "DC", 0, 1), 
+         GROUP_ECA = ifelse(GROUP == "C", "COMP", "ECA")) %>%
+  rename(Recruitment_group = GROUP)
 
 ```
 
@@ -92,7 +94,7 @@ df_wide <- df_by_run %>%
             SEX = mean(SEX, na.rm = T),
             Race = Race[1], 
             Ethnicity = Ethnicity[1],
-            GROUP = GROUP [1],
+            Recruitment_group = Recruitment_group [1],
             PI_DA = mean(PI_DA, na.rm = T),
             # getting beh QC 
             beh_QC_complete_runs = sum(beh_QC_complete_run, na.rm = T), 
@@ -318,7 +320,7 @@ save(COMP_all_usable, file = "tables/COMP_demo_table_any_unusable_scans.Rdata")
 
 # check group distribution by age
 ```{r}
-ggplot(subset(df_wide,scan_and_beh_runs_usable  > 0 & AGE > 5 & !is.na(GROUP)), aes(AGE)) + geom_histogram(binwidth= 1,fill  = "dark blue", alpha = 0.5) +
+ggplot(subset(df_wide,scan_and_beh_runs_usable  > 0 & AGE > 5 & !is.na(Recruitment_group)), aes(AGE)) + geom_histogram(binwidth= 1,fill  = "dark blue", alpha = 0.5) +
    theme_classic () + facet_grid (~ PI_DA)
 
 ```
