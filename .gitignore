@@ -6,10 +6,10 @@
 # single-subject files to ignore.
 2_beh_QC_and_demo/archived/
 2_beh_QC_and_demo/data/
-5_brain_motion_QC/habanero_jobs_output/**
-5_brain_motion_QC/archived/**
-5_brain_motion_QC/QA_motion_general/**
-5_brain_motion_QC/censored_TRs/**
+4_brain_motion_QC/habanero_jobs_output/**
+4_brain_motion_QC/archived/**
+4_brain_motion_QC/QA_motion_general/**
+4_brain_motion_QC/censored_TRs/**
 6_brain_preproc_level1_by_run/archived_lev1_models/
 6_brain_preproc_level1_by_run/preproc_lev1_fsfs/**
 6_brain_preproc_level1_by_run/onset_files/** 
