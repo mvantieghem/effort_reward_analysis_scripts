@@ -1,0 +1,281 @@
+---
+title: "Data cleaning for analysis for COMPS"
+author: "Michelle.VanTieghem"
+date: "7/9/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes
+level1 models for subjects with 1 run: must already be registered intoo standard space! 
+
+```{r, echo = F, message = F, warning = F}
+library(tidyverse)
+```
+
+## load sublist that we want to extract ROIs from
+```{r}
+usable_subj <- read.table("../5_brain_behav_inclusion/sublists/include_scan_and_beh_by_run2019-11-27.txt", header = F)
+names(usable_subj) <- c("SUBJECTID", "RunNumber")
+
+sublist <- usable_subj %>%
+  group_by(SUBJECTID) %>%
+  summarize(n = n())
+nrow(sublist) # 126
+
+subs_with_1_run <- usable_subj %>%
+  group_by(SUBJECTID) %>%
+  summarize(n = n() ) %>%
+  filter(n < 2)
+subs_with_1_run <- usable_subj %>%
+  filter(SUBJECTID %in% subs_with_1_run$SUBJECTID) %>%
+  mutate(RunNumber == ifelse("RUN1", 1, 2))
+
+```
+
+## designate groupings of contrasts...
+```{r}
+study_dir <- "/danl/PACCT/subject_data/derivatives/effort_reward/"
+
+# get cope model key for complete EV model with 24 copes
+load("../6_brain_preproc_level1_by_run/complete_EV_model_cope_key.Rdata")
+cope_key <- cope_key %>%
+  rename(contrast = cope_list)
+
+basic_cope_key <- cope_key %>%
+  filter(contrast %in% c("allChoices", "allEffort", "RewardFB", "SetbackFB", "Reward-SetbackFB"))
+
+choice_contrast_cope_key <- cope_key %>%
+  filter(contrast %in% c("EasyChoice", "HardChoice",  "Hard-EasyChoice"))
+
+hard_FB_contrast_cope_key <- cope_key %>%
+  filter(contrast %in% c("HardReward", "HardSetback", "HardReward-HardSetback"))
+
+# there aren't enough subjects to do beta pulls with these 2...
+# but getting a sublist to take count anyway.
+reward_FB_contrast_cope_key <- cope_key %>%
+  filter(contrast %in% c("HardReward", "EasyReward", "HardReward-EasyReward"))
+setback_FB_contrast_cope_key <- cope_key %>%
+  filter(contrast %in% c("HardSetback", "EasySetback", "HardSetback-EasySetback"))
+```
+
+## make input file for basic contrasts
+```{r}
+
+for (copeN in basic_cope_key$cope_number){
+# reset for each cope 
+  input_files <- data.frame(SUBJECTID = NA, file = NA)
+  # get the contrast 
+  contrast <- as.character(basic_cope_key$contrast[basic_cope_key$cope_number == copeN])
+  
+  # for each subject in the dataframe, get their input file!
+  for (sub in sublist$SUBJECTID){
+    N_runs <- sublist %>% filter(SUBJECTID == sub) %>% select(n)
+   
+        # if they has 2 runs....
+    if (N_runs == 2){
+        subfile <- data.frame(SUBJECTID = sub, file= paste0(study_dir, sub, "/effort/model/lev2_complete.gfeat/cope", copeN, ".feat/stats/cope1.nii.gz"))
+        input_files <- rbind(input_files, subfile)
+
+    } else {
+        # if they have 1 run....
+      RunNumber <- subs_with_1_run %>% filter(SUBJECTID == sub) %>% select(RunNumber)
+      subfile <- data.frame(SUBJECTID = sub, file = paste0(study_dir, sub, "/effort/model/preproc_lev1_run", RunNumber, ".feat/stats/cope", copeN, "_standard.nii.gz"))
+      input_files <- rbind(input_files, subfile)
+      
+    }
+    # write the input files!
+    input_files <-na.omit(input_files)
+   
+  # save file for ROI beta pulls (all subjects)
+      write.table(input_files, file = paste0("cope_input_files/cope", copeN,contrast,  "_input_files.txt"), quote = F, row.names = F, col.names = F)
+
+  }
+}
+
+
+nrow(input_files)
+
+```
+
+## for choice contrast EVs 
+### make sublist 
+must have at least 8 trials per hard & easy
+```{r}
+# load behavior data in long format
+load("../../behavioral_data/3_effort_task_data/compiled/compiled_long_format_all_data.Rdata")
+
+choice_contrast_subs <- behavior_long_data %>%
+  # only do this for subjects with usable scanning 
+  filter(SUB %in% sublist$SUBJECTID) %>%
+  # count number of trials per condition and filter out
+  group_by(SUB, Effort_Choice) %>%
+  summarize(N_trials =n()) %>%
+  spread(Effort_Choice, N_trials) %>%
+  filter(Easy >= 8 & Hard >= 8)
+
+# keep this sublist for later. 
+nrow(choice_contrast_subs)
+choice_contrast_sublist <- choice_contrast_subs$SUB
+save(choice_contrast_sublist, file = "sublists/subs_with_8_trials_for_choice_contrast_EVs.Rdata")
+
+```
+
+### make input files 
+```{r}
+
+for (copeN in choice_contrast_cope_key$cope_number){
+# reset for each cope 
+  input_files <- data.frame(SUBJECTID = NA, file = NA)
+  # get the contrast 
+  contrast <- as.character(choice_contrast_cope_key$contrast[choice_contrast_cope_key$cope_number == copeN])
+  
+  # for each subject in the dataframe, get their input file!
+  for (sub in choice_contrast_sublist){
+    N_runs <- sublist %>% filter(SUBJECTID == sub) %>% select(n)
+   
+        # if they has 2 runs....
+    if (N_runs == 2){
+        subfile <- data.frame(SUBJECTID = sub, file= paste0(study_dir, sub, "/effort/model/lev2_complete.gfeat/cope", copeN, ".feat/stats/cope1.nii.gz"))
+        input_files <- rbind(input_files, subfile)
+
+    } else {
+        # if they have 1 run....
+      RunNumber <- subs_with_1_run %>% filter(SUBJECTID == sub) %>% select(RunNumber)
+      subfile <- data.frame(SUBJECTID = sub, file = paste0(study_dir, sub, "/effort/model/preproc_lev1_run", RunNumber, ".feat/stats/cope", copeN, "_standard.nii.gz"))
+      input_files <- rbind(input_files, subfile)
+      
+    }
+    # write the input files!
+    input_files <-na.omit(input_files)
+   
+  # save file for ROI beta pulls (all subjects)
+      write.table(input_files, file = paste0("cope_input_files/cope", copeN,contrast,  "_input_files.txt"), quote = F, row.names = F, col.names = F)
+
+  }
+}
+
+nrow(input_files)
+
+```
+
+
+## hard FB contrast
+### make sublist
+must have at least 8 trials per the 4 conditions. 
+```{r}
+hard_FB_contrast_subs <- behavior_long_data %>%
+  # clean up the feedback condition info 
+  mutate(Feedback = ifelse(Reward_received == 1, "Reward", 
+                           ifelse(Reward_received == 0, "Setback", "Missed"))) %>%
+  
+  # only do this for subjects with usable scanning 
+  filter(SUB %in% sublist$SUBJECTID) %>%
+  # count number of trials per condition and filter out
+  group_by(SUB, Effort_Choice, Feedback) %>%
+  summarize(N_trials =n()) %>%
+  filter(Effort_Choice == "Hard" & !is.na(Feedback)) %>%
+  spread(Feedback, N_trials) %>%
+  filter(Reward >= 8 & Setback >= 8)
+nrow(hard_FB_contrast_subs)
+
+# save the sublist for later
+hard_FB_contrast_sublist <- hard_FB_contrast_subs$SUB
+save(hard_FB_contrast_sublist, file = "sublists/subs_with_8_trials_for_hard_FB_contrast_EVs.Rdata")
+```
+
+### make input files 
+```{r}
+
+for (copeN in hard_FB_contrast_cope_key$cope_number){
+# reset for each cope 
+  input_files <- data.frame(SUBJECTID = NA, file = NA)
+  # get the contrast 
+  contrast <- as.character(hard_FB_contrast_cope_key$contrast[hard_FB_contrast_cope_key$cope_number == copeN])
+  
+  # for each subject in the dataframe, get their input file!
+  for (sub in hard_FB_contrast_sublist){
+    N_runs <- sublist %>% filter(SUBJECTID == sub) %>% select(n)
+   
+        # if they has 2 runs....
+    if (N_runs == 2){
+        subfile <- data.frame(SUBJECTID = sub, file= paste0(study_dir, sub, "/effort/model/lev2_complete.gfeat/cope", copeN, ".feat/stats/cope1.nii.gz"))
+        input_files <- rbind(input_files, subfile)
+
+    } else {
+        # if they have 1 run....
+      RunNumber <- subs_with_1_run %>% filter(SUBJECTID == sub) %>% select(RunNumber)
+      subfile <- data.frame(SUBJECTID = sub, file = paste0(study_dir, sub, "/effort/model/preproc_lev1_run", RunNumber, ".feat/stats/cope", copeN, "_standard.nii.gz"))
+      input_files <- rbind(input_files, subfile)
+      
+    }
+    # write the input files!
+    input_files <-na.omit(input_files)
+   
+  # save file for ROI beta pulls (all subjects)
+      write.table(input_files, file = paste0("cope_input_files/cope", copeN,contrast,  "_input_files.txt"), quote = F, row.names = F, col.names = F)
+
+  }
+}
+
+nrow(input_files)
+
+```
+
+
+## Setback FB contrast
+### make sublist
+must have at least 8 trials per the 4 conditions. \
+there are not many subjects here!...
+```{r}
+setback_FB_contrast_subs <- behavior_long_data %>%
+  # clean up the feedback condition info 
+  mutate(Feedback = ifelse(Reward_received == 1, "Reward", 
+                           ifelse(Reward_received == 0, "Setback", "Missed"))) %>%
+  
+  # only do this for subjects with usable scanning 
+  filter(SUB %in% sublist$SUBJECTID) %>%
+  # count number of trials per condition and filter out
+  group_by(SUB, Effort_Choice, Feedback) %>%
+  summarize(N_trials =n()) %>%
+  filter(Feedback == "Setback" & !is.na(Effort_Choice)) %>%
+  spread(Effort_Choice, N_trials) %>%
+  filter(Hard >= 8 & Easy >= 8)
+nrow(setback_FB_contrast_subs)
+
+# save the sublist for later
+setback_FB_contrast_sublist <- setback_FB_contrast_subs$SUB
+save(setback_FB_contrast_sublist, file = "sublists/subs_with_8_trials_for_setback_FB_contrast_EVs.Rdata")
+```
+
+## Reward FB contrast
+### make sublist
+must have at least 8 trials per the 4 conditions. \
+there are not many subjects here!...not enough for beta pulls.
+```{r}
+reward_FB_contrast_subs <- behavior_long_data %>%
+  # clean up the feedback condition info 
+  mutate(Feedback = ifelse(Reward_received == 1, "Reward", 
+                           ifelse(Reward_received == 0, "Setback", "Missed"))) %>%
+  
+  # only do this for subjects with usable scanning 
+  filter(SUB %in% sublist$SUBJECTID) %>%
+  # count number of trials per condition and filter out
+  group_by(SUB, Effort_Choice, Feedback) %>%
+  summarize(N_trials =n()) %>%
+  filter(Feedback == "Reward" & !is.na(Effort_Choice)) %>%
+  spread(Effort_Choice, N_trials) %>%
+  filter(Hard >= 8 & Easy >= 8)
+nrow(reward_FB_contrast_subs)
+
+# save the sublist for later
+reward_FB_contrast_sublist <- reward_FB_contrast_subs$SUB
+save(reward_FB_contrast_sublist, file = "sublists/subs_with_8_trials_for_reward_FB_contrast_EVs.Rdata")
+```
