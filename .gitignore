@@ -14,6 +14,7 @@
 6_brain_preproc_level1_by_run/preproc_lev1_fsfs/**
 6_brain_preproc_level1_by_run/onset_files/** 
 7_brain_level2_combine_runs/lev2_fsfs/**
+7_brain_level2_combine_runs/template_lev2_fsf/archived/**
 8_brain_ROI_analysis/ROIs/**
 8_brain_ROI_analysis/pulled_betas/**
 8_brain_ROI_analysis/pulled_betas_N126_old/**
@@ -35,4 +36,9 @@
 **/*.nohup
 **/*.pdf
 **/*._*
+**/*.con
+**/.grp
+**/.mat
+**/.ppm
+**/.png
 
