@@ -18,11 +18,11 @@ output:
 updated Nov 26, 2019 to just use updated groups from master for deciding PI_DA/ COMP_DC groupings. 
 old version had wrongly been including 4 DA subjects as comps becuase they didn't have any CGH_IFC or CGH_FC ...
 
+
 # load data 
 ## master 
 ```{r, include = F,warnings = F, error = F}
-library(readxl)
-library(tidyverse)
+source("../../0_R_analysis_setup_file.R", echo=F)
 
 
 master <- read_excel("../../subj_demo/masters/MASTER_20191118_updated_MICM.xlsx") 

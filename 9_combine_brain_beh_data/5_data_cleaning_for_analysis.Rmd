@@ -1,0 +1,473 @@
+---
+title: "Data cleaning for analysis for COMPS"
+author: "Michelle.VanTieghem"
+date: "Dec 1, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+updated Dec 16, 2019 to add key press RT from effort tasks
+
+
+```{r, warning = F, message = F}
+source("../0_R_analysis_setup_file.R", echo=F)
+```
+
+
+# Set up data
+## load behavior master, which includes demographic variables 
+generated: 3_progress_report_Scans_and_behavior.Rmd 
+has all behavior data, QC info, and demographics. long format, by run.
+```{r}
+load("../../behavioral_data/3_Effort_task_data/compiled/compiled_effort_scan_version_filtered_usable_with_demo.Rdata")
+nrow(df_by_run_usable_beh)
+
+# finish cleaning this data
+beh_by_run <- df_by_run_usable_beh %>%
+  rename(proportion_hard = N_prop_hard) %>%
+  mutate(Run_Number.n = ifelse(Run_number == "RUN1", 1, 2), 
+         # answers of 4 for perceived control are not plausible, error data!! 
+         perceived_control = ifelse(perceived_control == 4, NA, perceived_control))
+
+```
+
+
+## load in long-formatted behavioral data per subject 
+generated in behavior_perproc_scripts/1_effort_task_behavior_preproc.Rmd
+add a couple more variables 
+```{r}
+load("../../behavioral_data/3_effort_task_data/compiled/compiled_long_format_all_data_with_buttonpress.Rdata")
+
+behavior_long_data <- behavior_long_data %>%
+  rename(SUBJECTID = SUB) %>%
+  # add turtle feedback! if they didn't make it to top of green bar.
+  mutate(Feedback = as.factor(ifelse(Accuracy == 0, "Too_slow",
+                                    ifelse(Accuracy == 1 & Reward_received == 1, "Reward", 
+                                           ifelse(Accuracy == 1 & Reward_received == 0, "Setback", 
+                                                  ifelse(is.na(Reward_received), NA, "fix"))))))
+summary(behavior_long_data$keyboard_version)
+
+# NA = missed choice, so no feedback phase.s
+summary(behavior_long_data$Feedback)
+
+# get the max that their hard task was titrated to.
+by_subj <- behavior_long_data %>%
+  group_by(SUBJECTID) %>%
+  dplyr::summarize(hard_task_titration = max(max_keys, na.rm = T)) 
+#head(by_subj)
+# everyone is a 3!!! so no point in caring about easy task.
+#summary(by_subj$hard_task_titration[by_subj$Effort_Choice == "Easy"])
+# add this subject-level covariate into the long df.
+behavior_long_data <- merge(behavior_long_data, by_subj, by = "SUBJECTID")
+
+```
+
+### merge into a long dataframe (by trial) 
+beh_by_run is already filtered for usable, long data is not. do not say "all = T"
+```{r}
+beh_long <- merge(beh_by_run, behavior_long_data, by = c("SUBJECTID", "Run_number"))
+nrow(beh_long)
+
+### CHECKS BEFORE MOVING FORWARD ### 
+# any dupliocated trials? 
+trial_check <- beh_long %>%
+  group_by(SUBJECTID, Run_number) %>%
+  dplyr::summarize(N_trials = n()) %>% 
+  filter(N_trials > 22)
+trial_check # none!
+
+# any duplicated runs?
+run_check <- beh_by_run %>%
+  group_by(SUBJECTID) %>%
+  dplyr::summarize(N_runs = n()) %>%
+  filter(N_runs > 2)
+run_check # none! 
+
+```
+
+
+## Set up long data for behavior analysis 
+
+### clean data 
+double check that we excluded subjects with extreme reinforcement rates, too many "too slow" resps, or not enough choices.
+
+```{r}
+
+# re-ordering the entire dataframe by Trial Number and run number! 
+beh_long2 <- beh_long[order(beh_long$SUBJECTID, beh_long$Run_Number.n, beh_long$Trial_Number),]
+
+
+beh_long3 <- beh_long2 %>%
+    # rename motor variables - subject level covariates.
+  rename(median_motor_RT_easy = median_RT_thumb, 
+         median_motor_RT_hard = median_RT_ring,
+         mean_motor_RT_easy = mean_RT_thumb, 
+         mean_motor_RT_hard = mean_RT_ring,
+         motor_key_count_easy = thumb_key_count, 
+         motor_key_count_hard = ring_key_count,
+         effort_key_count = key_count,
+         IQ = WASI_FSIQ) %>%
+  mutate(Trial_Number = as.numeric(as.character(Trial_Number)),
+         # these are all subject-level covariaces
+         # self-report measures 
+         hard_effort_perceived = as.numeric(hard_effort), 
+         easy_effort_perceived = as.numeric(easy_effort), 
+         perceived_effort_ave = (hard_effort_perceived + easy_effort_perceived)/2,
+         perceived_effort_diff = (hard_effort_perceived - easy_effort_perceived),
+         fun = as.numeric(fun),
+         motivated = as.numeric(motivated),
+         sleepy = as.numeric(sleepy),
+         frustrated = as.numeric(frustrated),
+         win_feeling = as.numeric(win_feeling),
+         lose_feeling = as.numeric(lose_feeling),
+         perceived_reinforce = as.numeric(perceived_reinforce),
+         perceived_control = as.numeric(perceived_control),
+        # motor confounds 
+          mean_motor_RT_ave = (mean_motor_RT_easy + mean_motor_RT_hard)/2, 
+          median_motor_RT_ave = (median_motor_RT_easy + median_motor_RT_hard)/2,
+          motor_key_count_ave = (motor_key_count_hard + motor_key_count_easy)/2,
+         # TRIAL BY TRIAL MEASURES
+         Effort_Choice.n = ifelse(Effort_Choice == "Hard", 1,
+                                  ifelse(Effort_Choice == "Easy", 0, NA)),
+         # key overshoot = reflecting their presses relative to titration.
+          max_keys_easy = ifelse(Effort_Choice.n == 0, max_keys, NA),
+          max_keys_hard = ifelse(Effort_Choice.n == 1, max_keys, NA),
+          effort_key_overshoot = (effort_key_count - max_keys),
+          effort_key_overshoot_easy = ifelse(Effort_Choice.n == 0, effort_key_count - max_keys, NA), 
+          effort_key_overshoot_hard = ifelse(Effort_Choice.n == 1, effort_key_count - max_keys, NA),
+        # key- count: don't need to calculate!! 
+          mean_RT_button_press = ifelse(Effort_Choice.n == 0, mean_RT_easy_button_press, 
+                                        ifelse(Effort_Choice.n == 1, mean_RT_hard_button_press, NA)),
+          median_RT_button_press = ifelse(Effort_Choice.n == 0, median_RT_easy_button_press, 
+                                          ifelse(Effort_Choice.n == 1, median_RT_hard_button_press, NA)),
+          perceived_effort = ifelse(Effort_Choice.n == 1, hard_effort_perceived,
+                                   ifelse(Effort_Choice.n == 0, easy_effort_perceived, NA)))
+          
+# make trial 1-42 instead of 2 blocks of 21 
+beh_long3$Trial_Number_all <- ifelse(beh_long3$Run_number == "RUN1", beh_long3$Trial_Number, ifelse(beh_long3$Run_number == "RUN2", beh_long3$Trial_Number + 21, NA))
+
+#names(beh_long)
+```
+
+
+### create mean centered covariates
+```{r}
+beh_long <- beh_long3 %>%
+  mutate (Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+          Reinforce_easy.c = Reinforce_easy - mean(Reinforce_easy, na.rm = T), 
+          Reinforce_hard.c = Reinforce_hard - mean(Reinforce_hard, na.rm = T), 
+          AGE.c = AGE - mean(AGE, na.rm = T), 
+          SEX.c = SEX - mean(SEX, na.rm = T), 
+          Trial_Number.c = Trial_Number - mean(Trial_Number, na.rm= T), 
+          proportion_hard.c = proportion_hard - mean(proportion_hard), 
+         IQ.c = IQ - mean(IQ, na.rm = T), 
+         perceived_effort.c = perceived_effort - mean(perceived_effort, na.rm =T),
+         perceived_effort_diff.c = perceived_effort_diff - mean(perceived_effort_diff, na.rm =T),
+         perceived_effort_ave.c = perceived_effort_ave - mean(perceived_effort_ave, na.rm =T), 
+         hard_effort_perceived.c = hard_effort_perceived - mean(hard_effort_perceived, na.rm = T))
+          
+```
+
+## make WSLS dataset (separate from regular)
+add WSLS variables, shifted to prior trial
+using the entire dataset, including misses...
+NOTE: this excludes the first trial of each run because the prior trial is NA. 
+```{r}
+# make a copy of the dataset, remove all of the first trials, and mark them as 100 to keep out of place.
+df_copy2 <- beh_long %>%
+  # making a copy that adds 1 to trial number
+  mutate(Trial_Number = Trial_Number + 1) %>%
+  # so effort choice prior for trial 2 represents the effort choice from trial 1 
+  dplyr::select(SUBJECTID, Run_number, Trial_Number, Effort_Choice, Feedback) %>%
+  rename(Effort_Choice_prior = Effort_Choice, 
+         Feedback_prior = Feedback) 
+
+# now re-sort the data, so that all trials are shifted up 1 place. 
+df_copy2 <- df_copy2[order(df_copy2$SUBJECTID, df_copy2$Run_number, df_copy2$Trial_Number),]
+
+# now merge this new thing with orig data, by sub, run, and Trial_Number! 
+beh_long_WSLS <- merge(beh_long, df_copy2, by = c("SUBJECTID", "Run_number", "Trial_Number"), all = T) %>%
+  # exclude the first trial of each run because the prior trial is NA.
+  filter(!is.na(Effort_Choice) & Trial_Number != 1) %>% 
+## calculate stay-shift variables, 1 = stay, 0 = shift
+  ## don't count missed choices for current or prior trial! 
+  mutate(stay_shift = ifelse(Effort_Choice == "Miss" | Effort_Choice_prior == "Miss", NA, 
+                             ifelse(Effort_Choice == Effort_Choice_prior, 1, 0)),
+         # making a new variable that counts turtles as setbacks.
+         Feedback_prior_inclturtle = as.factor(ifelse(Feedback_prior == "Too_slow", "Setback", as.character(Feedback_prior)))) %>%
+  filter(Effort_Choice_prior != "Miss")
+```
+
+### sanity check for WSLS variables
+```{r}
+# NA = choices that were missed for current or prior trial - excluding both!! 
+summary(as.factor(beh_long_WSLS$stay_shift)) 
+
+# missed choices are coded here, just making sure formatted correctly.
+summary(as.factor(beh_long_WSLS$Effort_Choice_prior)) 
+
+# NA = choices that were missed, keeping too slow as a separate level.
+summary(as.factor(beh_long_WSLS$Feedback_prior)) 
+
+# NA = choices that were missed, too slow feedback was counted as setback
+summary(as.factor(beh_long_WSLS$Feedback_prior_inclturtle)) 
+```
+
+
+## Make subject-level dataframe
+```{r}
+
+# make a subject-specific summary of their overall choices
+beh_wide <- beh_long %>%
+  group_by(SUBJECTID) %>%
+  dplyr::summarize(PI_DA = PI_DA[1], 
+                   Recruitment_group = Recruitment_group[1],
+                   ft_version = ft_version[1],
+            keyboard_version = keyboard_version[1],
+            SEX = mean(SEX), 
+            AGE = mean(AGE, na.rm = T),
+            IQ = mean(IQ, na.rm = T),
+            Fam_inc_needs = mean(INC_ITN_HOUSE, na.rm = T),
+            N_trials = n(), 
+            prop_hard_choices = mean(Effort_Choice.n, na.rm = T),
+            Reinforce_rate  = mean(Reinforce_rate, na.rm = T), # MEAN
+            Reinforce_hard = mean(Reinforce_hard, na.rm = T),
+            Reinforce_easy = mean(Reinforce_easy, na.rm = T),
+            # self-report measures 
+           hard_effort_perceived = mean(hard_effort_perceived, na.rm = T),
+           easy_effort_perceived = mean(easy_effort_perceived, na.rm = T),
+           perceived_effort_ave = mean(perceived_effort_ave, na.rm = T),
+           perceived_effort_diff = mean (perceived_effort_diff, na.rm = T),
+           fun = mean(fun, na.rm = T),
+           motivated = mean(motivated, na.rm = T),
+           sleepy = mean(sleepy, na.rm = T),
+           frustrated = mean(frustrated, na.rm = T),
+           win_feeling = mean(win_feeling, na.rm = T),
+           lose_feeling = mean(lose_feeling, na.rm = T),
+           perceived_reinforce = mean(perceived_reinforce, na.rm = T),
+           perceived_control = mean(perceived_control, na.rm = T),
+           # motor pre-test finger tapping
+           # median of the within-trial RT for the task  ... 
+            mean_motor_RT_easy = mean(mean_motor_RT_easy, na.rm = T),
+            mean_motor_RT_hard = mean(mean_motor_RT_hard, na.rm = T),
+            mean_motor_RT_ave = mean(mean_motor_RT_ave, na.rm = T),
+            median_motor_RT_easy = mean(median_motor_RT_easy, na.rm = T),
+            median_motor_RT_hard = mean(median_motor_RT_hard, na.rm = T),
+            median_motor_RT_ave = mean(median_motor_RT_ave, na.rm = T), 
+            motor_key_count_easy = mean(motor_key_count_easy, na.rm = T), 
+            motor_key_count_hard = mean(motor_key_count_hard, na.rm = T),
+            motor_key_count_ave = mean(motor_key_count_ave, na.rm = T),
+           ## effort button presses 
+            max_keys_hard = mean(max_keys_hard, na.rm = T), 
+            max_keys_easy = mean(max_keys_easy, na.rm = T),
+            effort_key_overshoot = mean (effort_key_overshoot, na.rm = T),
+            effort_key_overshoot_easy = mean(effort_key_overshoot_easy, na.rm = T), 
+           effort_key_overshoot_hard = mean(effort_key_overshoot_hard, na.rm = T),
+          # key- count: don't need to calculate!! 
+            mean_RT_button_press = mean(mean_RT_button_press, na.rm = T),
+            median_RT_button_press = mean(median_RT_button_press, na.rm = T),
+            mean_RT_hard_button_press = mean(mean_RT_hard_button_press, na.rm = T),
+            median_RT_hard_button_press = mean(median_RT_hard_button_press, na.rm = T),          
+            mean_RT_easy_button_press = mean(mean_RT_easy_button_press, na.rm = T),
+            median_RT_easy_button_press = mean(median_RT_easy_button_press, na.rm = T))  %>%
+
+  # add mean centered variables
+  mutate(Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+          Reinforce_easy.c = Reinforce_easy - mean(Reinforce_easy, na.rm = T), 
+          Reinforce_hard.c = Reinforce_hard - mean(Reinforce_hard, na.rm = T), 
+          AGE.c = AGE - mean(AGE, na.rm = T), 
+          SEX.c = SEX - mean(SEX, na.rm = T), 
+          Trial_Number.c = N_trials - mean(N_trials, na.rm= T), 
+          prop_hard_choices.c = prop_hard_choices - mean(prop_hard_choices), 
+          IQ.c = IQ - mean(IQ, na.rm = T), 
+          N_trials.c = N_trials- mean(N_trials, na.rm = T), 
+          Fam_inc_needs.c = Fam_inc_needs- mean(Fam_inc_needs, na.rm = T)) # task titration
+
+nrow(beh_wide)
+```
+
+### checks: PA233 and PA253 are missing IQ -WASI not completed at visit! 
+```{r}
+# missing IQ 
+NA_Check <- beh_wide %>%
+  filter(is.na(IQ)) 
+NA_Check
+```
+
+## make subject-level data-frame for WSLS too 
+```{r}
+
+# make a subject-specific summary for WSLS - so grouped by feedback X effort! 
+beh_wide_WSLS <- beh_long_WSLS %>%
+  group_by(SUBJECTID, Feedback_prior, Effort_Choice_prior) %>%
+  dplyr::summarize(PI_DA = PI_DA[1], 
+                   Recruitment_group = Recruitment_group[1],
+                   ft_version = ft_version[1],
+            keyboard_version = keyboard_version[1],
+            SEX = mean(SEX, na.rm = T), 
+            SEX.c = mean(SEX.c, na.rm = T),
+            AGE = mean(AGE, na.rm = T),
+            AGE.c = mean(AGE.c, na.rm = T),
+            IQ = mean(IQ, na.rm = T),
+            Fam_inc_needs = mean(INC_ITN_HOUSE, na.rm = T),
+            N_trials = n(), 
+            prop_hard_choices = mean(Effort_Choice.n, na.rm = T),
+            stay_shift = mean(stay_shift, na.rm = T),
+            Reinforce_rate  = mean(Reinforce_rate, na.rm = T), # MEAN
+            Reinforce_hard = mean(Reinforce_hard, na.rm = T),
+            Reinforce_easy = mean(Reinforce_easy, na.rm = T),
+            # self-report measures 
+           hard_effort_perceived = mean(hard_effort_perceived, na.rm = T),
+           easy_effort_perceived = mean(easy_effort_perceived, na.rm = T),
+           perceived_effort_ave = mean(perceived_effort_ave, na.rm = T),
+           perceived_effort_diff = mean (perceived_effort_diff, na.rm = T),
+           fun = mean(fun, na.rm = T),
+           motivated = mean(motivated, na.rm = T),
+           sleepy = mean(sleepy, na.rm = T),
+           frustrated = mean(frustrated, na.rm = T),
+           win_feeling = mean(win_feeling, na.rm = T),
+           lose_feeling = mean(lose_feeling, na.rm = T),
+           perceived_reinforce = mean(perceived_reinforce, na.rm = T),
+           perceived_control = mean(perceived_control, na.rm = T),
+           # motor pre-test finger tapping
+           # median of the within-trial RT for the task  ... 
+            mean_motor_RT_easy = mean(mean_motor_RT_easy, na.rm = T),
+            mean_motor_RT_hard = mean(mean_motor_RT_hard, na.rm = T),
+            mean_motor_RT_ave = mean(mean_motor_RT_ave, na.rm = T),
+            median_motor_RT_easy = mean(median_motor_RT_easy, na.rm = T),
+            median_motor_RT_hard = mean(median_motor_RT_hard, na.rm = T),
+            median_motor_RT_ave = mean(median_motor_RT_ave, na.rm = T), 
+            motor_key_count_easy = mean(motor_key_count_easy, na.rm = T), 
+            motor_key_count_hard = mean(motor_key_count_hard, na.rm = T),
+            motor_key_count_ave = mean(motor_key_count_ave, na.rm = T),
+           ## effort button presses 
+            max_keys_hard = mean(max_keys_hard, na.rm = T), 
+            max_keys_easy = mean(max_keys_easy, na.rm = T),
+            effort_key_overshoot = mean (effort_key_overshoot, na.rm = T),
+            effort_key_overshoot_easy = mean(effort_key_overshoot_easy, na.rm = T), 
+           effort_key_overshoot_hard = mean(effort_key_overshoot_hard, na.rm = T),
+          # key- count: don't need to calculate!! 
+            mean_RT_button_press = mean(mean_RT_button_press, na.rm = T),
+            median_RT_button_press = mean(median_RT_button_press, na.rm = T),
+            mean_RT_hard_button_press = mean(mean_RT_hard_button_press, na.rm = T),
+            median_RT_hard_button_press = mean(median_RT_hard_button_press, na.rm = T),          
+            mean_RT_easy_button_press = mean(mean_RT_easy_button_press, na.rm = T),
+            median_RT_easy_button_press = mean(median_RT_easy_button_press, na.rm = T))  %>%
+
+  # add mean centered variables
+  mutate(Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+          Reinforce_easy.c = Reinforce_easy - mean(Reinforce_easy, na.rm = T), 
+          Reinforce_hard.c = Reinforce_hard - mean(Reinforce_hard, na.rm = T), 
+         # AGE.c = AGE - mean(AGE, na.rm = T), 
+        #  SEX.c = SEX - mean(SEX, na.rm = T), 
+          Trial_Number.c = N_trials - mean(N_trials, na.rm= T), 
+          prop_hard_choices.c = prop_hard_choices - mean(prop_hard_choices), 
+          IQ.c = IQ - mean(IQ, na.rm = T), 
+          N_trials.c = N_trials- mean(N_trials, na.rm = T), 
+          Fam_inc_needs.c = Fam_inc_needs- mean(Fam_inc_needs, na.rm = T)) # task titration
+
+length(unique(beh_wide_WSLS$SUBJECTID))
+
+```
+
+
+
+# Add ROI analysis brain data 
+updated october 8, 2019 to include teh complete model with all possible copes...
+needs to be updated to include PA255
+```{r}
+load(file = "FSL_cope_files/complete_EV_copes.Rdata")
+nrow(complete_EV_copes)
+```
+
+
+### load data from progress report QC and merge with betas 
+```{R}
+load("../5_brain_behav_inclusion/data/all_data_QC_and_demographics_wide2019-12-04.Rdata")
+df_wide <-  df_wide %>%
+  dplyr::select(-SEX, -AGE)
+names(df_wide)
+
+# only keep people in this usable list!! 
+cope_df2 <- merge(complete_EV_copes, df_wide, by = "SUBJECTID")
+nrow(cope_df2)
+```
+
+### add motion!
+```{r}
+load("../../FSL_pipeline/1.motion_assess/compiled_motion_info_2019-08-07.Rdata")
+motion_df <- merged_df %>%
+  group_by(SUBJECTID) %>%
+  dplyr::summarize(total_TRs_censored = sum(censored_TRs, na.rm = T), 
+            meanFD_included_trs = mean(meanFD_included_trs, na.rm = T), 
+            meanFD_all_trs = mean(meanFD_all_trs, na.rm = T))
+
+cope_df3 <- merge(cope_df2, motion_df, by = "SUBJECTID")
+nrow(cope_df3)
+```
+
+
+## combine behavior & scan data (wide & long) for all subjects (ECA sample) & save
+calling this "ECA" because will be used for ECA paper.
+```{r}
+beh_ECA_wide <- beh_wide 
+beh_ECA_long <- beh_long
+beh_ECA_wide_WSLS <- beh_wide_WSLS
+beh_ECA_long_WSLS <- beh_long_WSLS
+
+
+beh_scan_ECA_wide <- cope_df3 %>%
+  left_join(., beh_ECA_wide, by = c("SUBJECTID", "Recruitment_group", "PI_DA"))
+
+nrow(beh_scan_ECA_wide)
+
+beh_scan_ECA_wide_WSLS <- cope_df3 %>%
+  left_join(., beh_ECA_wide_WSLS, by = c("SUBJECTID", "Recruitment_group", "PI_DA"))
+ # double checking subjects in data
+length(unique(beh_scan_ECA_wide_WSLS$SUBJECTID))
+
+beh_scan_ECA_long <- cope_df3 %>%
+  left_join(., beh_ECA_long, by = c("SUBJECTID", "Recruitment_group", "PI_DA"))
+
+beh_scan_ECA_long_WSLS <- cope_df3 %>%
+  merge(beh_ECA_long_WSLS, by = c("SUBJECTID", "Recruitment_group", "PI_DA"))
+
+save(beh_ECA_wide, beh_ECA_long, beh_ECA_wide_WSLS, beh_ECA_long_WSLS, 
+     beh_scan_ECA_wide, beh_scan_ECA_wide_WSLS, beh_scan_ECA_long, beh_scan_ECA_long_WSLS, file = "cleaned_data/COMP_ECA/all_pacct_effort_data.Rda")
+
+```
+
+
+## filter out for only COMPS & save
+
+```{r}
+# COMPs are all non-adopted children! 
+summary(as.factor(beh_ECA_wide$Recruitment_group))
+summary(as.factor(beh_ECA_wide$PI_DA))
+
+## beahvior versions
+
+beh_comp_wide <- beh_ECA_wide %>% filter(PI_DA == 0)
+
+beh_comp_wide_WSLS <- beh_ECA_wide_WSLS %>% filter(PI_DA == 0)
+beh_comp_long <- beh_ECA_long  %>% filter(PI_DA == 0)
+beh_comp_long_WSLS <- beh_ECA_long_WSLS  %>% filter(PI_DA == 0)
+
+## scan versions
+beh_scan_comp_wide <- beh_scan_ECA_wide %>% filter(PI_DA == 0)
+beh_scan_comp_wide_WSLS <- beh_scan_ECA_wide_WSLS %>% filter(PI_DA == 0)
+beh_scan_comp_long <- beh_scan_ECA_long  %>% filter(PI_DA == 0)
+beh_scan_comp_long_WSLS <- beh_scan_ECA_long_WSLS  %>% filter(PI_DA == 0)
+
+save(beh_comp_wide, beh_comp_long, beh_comp_wide_WSLS, beh_comp_long_WSLS, 
+     beh_scan_comp_wide, beh_scan_comp_wide_WSLS, beh_scan_comp_long, beh_scan_comp_long_WSLS, file = "cleaned_data/COMPS_ONLY/COMP_pacct_effort_data.Rda")
+
+```
+

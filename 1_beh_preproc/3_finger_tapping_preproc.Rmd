@@ -48,6 +48,8 @@ for(i in ft_files2){
 
 length(ft.data.list)
 save(ft.data.list, file = "../../behavioral_data/1_finger_tapping_data/compiled/compiled_finger_tapping_data_long_format_list.Rdata")
+
+check <- ft.data.list[[200]]
 ```
 
 # loop through to clean data.

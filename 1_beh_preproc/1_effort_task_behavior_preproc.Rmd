@@ -19,6 +19,7 @@ updated on March 25, 2019 to include ALL DATA COLLECTED EVER \
  updated April 3, 2019 to make sure reinforcement rate is based on only effort trials that were successful! \
 updated November 26, 2019 to record version of task (inside or out of scanner) based on naming of file \
 this is an imperfect measure, but better than nothing. \
+updated on Dec 16, 2019 to include button press counts and RT.
 
 ```{r}
 library(stringr)
@@ -43,6 +44,7 @@ for(i in filelist){
   data.list[[i]] <- data.file
 }
 length(data.list) # 367 after removing all duplicate runs! 
+
 ```
 
 # Make a dataframe with data collapsed by run 
@@ -54,7 +56,7 @@ for (m in 1:length(data.list)){
   # BECAUSE FILE NAMES WERE FIXED FOR TYPOS
   filename <- names(data.list)[m]
   # GET VERSION based on name of file...
-  task_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
+  keyboard_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
 
   SUBJECTID <- substr(filename, 1, 5)
   filename2 <- unlist(strsplit(filename, "_"))
@@ -104,7 +106,7 @@ for (m in 1:length(data.list)){
     
   
     # cumulate average data for the subject. 
-    subdata <- data.frame(SUBJECTID, task_version, date, Run_number,
+    subdata <- data.frame(SUBJECTID, keyboard_version, date, Run_number,
                           N_trials, N_choices_missed, N_choices_resp,
                           N_choices_hard, N_choices_easy, N_prop_hard,
                           N_accurate, N_accurate_hard, N_accurate_easy,
@@ -128,7 +130,7 @@ behavior_run_data <- cumulative_data
 
 check_runs <- behavior_run_data %>%
   group_by(SUBJECTID) %>%
-  summarize(N_runs = n()) %>%
+  dplyr::summarize(N_runs = n()) %>%
   filter(N_runs > 2)
 nrow(check_runs)  
 check_runs
@@ -144,82 +146,125 @@ save(behavior_run_data, file = "../../behavioral_data/3_effort_task_data/compile
 # make dataframe in long format for behavior analysis.
 only with subjects who should be included.
 ```{r}
+
 # make an empty dataframe.
 data.long <- data.frame()
-for(i in filelist){
+for(filename in filelist){
   #print (i)
-  filename <- i
-  file <- paste0(filepath, i)
+ # filename <- filelist[101]
+  file <- paste0(filepath, filename)
   # assign data frame for each subject and read it into R
   data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
   data.file <- data.frame(data.file)
-  task_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
+  keyboard_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
   # get the subject ID and run number.
   SUB <- substr(filename, 1, 5)
   filename2 <- unlist(strsplit(filename, "_"))
   Run_number <- filename2[2]
-        data.file2 <- data.file %>%
-              select(date, Trial_Number, Effort_Choice, 
-                     key_resp_choice.keys, key_resp_choice.rt,
-                    Trial_Number_Easy, Trial_Number_Hard, Choice_Number_Miss, 
-                       max_keys, key_count,  Accuracy, Reward_received)
-        # use the subject ID and run number from file name, not file contents!! 
-        data.file3 <- data.frame(SUB, Run_number, task_version, data.file2)
-        # add data for each subject to list of data frames 
-        data.long <- rbind(data.long, data.file3)
-}
-
-#head(data.long)
-
-behavior_long_data <- data.long
-save(behavior_long_data, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_long_format_all_data.Rdata")
-```
-
-# make dataframe for capturing RT of each button press during effort tasks - separate 
-
-```{r}
-effort_RT_long <- data.frame()
-for(i in filelist){
-  #print (i)
-  filename <- i
-  file <- paste0(filepath, i)
-  # assign data frame for each subject and read it into R
-  data.file <-  tryCatch(read.csv(file, sep = ','), error=function(e) NULL)
-  data.file <- data.frame(data.file)
-  task_version <- ifelse(grepl("external_keyboard_handedness", filename), "outside scanner external keyboard", "inside scanner")
-  # get the subject ID and run number.
-  SUB <- substr(filename, 1, 5)
-  filename2 <- unlist(strsplit(filename, "_"))
-  Run_number <- filename2[2]
-# if they made both hard and easy choices 
+  # select items to save for long df 
+  sub_df <- data.file %>%
+      select(date, Trial_Number, Effort_Choice, 
+            key_resp_choice.keys, key_resp_choice.rt,
+            Trial_Number_Easy, Trial_Number_Hard, Choice_Number_Miss, 
+            max_keys, key_count,  Accuracy, Reward_received) 
+  ### GET BUTTON PRESS INFO ### 
+  # if they made both hard and easy choices 
     if ('key_resp_effort.rt' %in% names(data.file) & 'key_resp_hard_effort.rt' %in% names(data.file)){
-        data.file2 <- data.file %>%
-            select(date, Trial_Number, key_resp_hard_effort.rt, key_resp_effort.rt) %>%
+        RT_df <- data.file %>%
+            select(date, Trial_Number, key_resp_hard_effort.rt, key_resp_effort.rt ) %>%
              # the easy condition isn't marked as such, only hard is. rename to be more intuitive . 
             rename(cumulative_RT_hard_effort = key_resp_hard_effort.rt, 
                    cumulative_RT_easy_effort = key_resp_effort.rt)
    # if they only had easy choices
   } else if ('key_resp_effort.rt' %in% names(data.file) & !'key_resp_hard_effort.rt' %in% names(data.file)){
-        data.file2 <- data.file %>%
+        RT_df <- data.file %>%
             select(date, Trial_Number, key_resp_effort.rt) %>%
             rename(cumulative_RT_easy_effort = key_resp_effort.rt) %>%
-          # make a variable placeholder and mark NA for easy task RT.
+          # make a variable placeholder and mark NA for hard task RT.
             mutate(cumulative_RT_hard_effort = NA)
     # if they only had hard choices 
     } else if (!'key_resp_effort.rt' %in% names(data.file) & 'key_resp_hard_effort.rt' %in% names(data.file)){
-              data.file2 <- data.file %>%
+              RT_df <- data.file %>%
             select(date, Trial_Number, key_resp_hard_effort.rt) %>%
             rename(cumulative_RT_hard_effort = key_resp_hard_effort.rt) %>%
           # make a variable placeholder and mark NA for easy task RT.
             mutate(cumulative_RT_easy_effort = NA)
-    # now merge the various stuff together for each subject
-   # use the subject ID and run number from file name, not file contents!! 
-    data.file3 <- data.frame(SUB, Run_number, task_version, data.file2)
-    # add data for each subject to list of data frames 
-     effort_RT_long <- rbind(effort_RT_long, data.file3)
-    }
+    } 
+
+    #GET THE NUMBER OF PRESSES & mean RT VARIABLES.
+   ## EASY 
+     RT_df$cumulative_RT_easy_effort <-  as.character(RT_df$cumulative_RT_easy_effort)
+     RT_df$cumulative_RT_easy_effort[RT_df$cumulative_RT_easy_effort == ""] <- NA
+      easy_buttons <- strsplit(RT_df$cumulative_RT_easy_effort, ",")
+      for (i in 1:length(easy_buttons)){
+      # only move forward if this isn't an NA for this trial.
+        if (!is.na(easy_buttons[[i]])){
+             # count number of presses in this trial
+            RT_df$N_easy_button_press[i] <- length(easy_buttons[[i]])
+            # get mean RT for presses in this trial
+            RT_easy_button_press_temp <- as.numeric(cbind(str_extract(easy_buttons[[i]], "[0-9.]+")))
+            # they are cumulative, so need to subtract from the button press before to get actual RT for each press.
+            # this formula is going to depend on how many presses there are for a given trial.
+             RT_easy_button_press_temp2 <- NA
+            for (k in 1:length(RT_easy_button_press_temp)){
+               if (k == 1){
+                 RT_easy_button_press_temp2[k] <- RT_easy_button_press_temp[k]
+               } else {
+                  RT_easy_button_press_temp2[k] <- RT_easy_button_press_temp[k] - RT_easy_button_press_temp[k-1]
+               }
+            } # take the average
+            RT_df$mean_RT_easy_button_press[i] <- mean(RT_easy_button_press_temp2)
+            RT_df$median_RT_easy_button_press[i] <- median(RT_easy_button_press_temp2)
+        } else {
+          # just mark as NA.
+        RT_df$N_easy_button_press[i] <- NA
+        RT_df$mean_RT_easy_button_press[i] <- NA
+        RT_df$median_RT_easy_button_press[i] <- NA
+
+        }
+      }
+    ## HARD 
+    RT_df$cumulative_RT_hard_effort <-  as.character(RT_df$cumulative_RT_hard_effort)
+    RT_df$cumulative_RT_hard_effort[RT_df$cumulative_RT_hard_effort == ""] <- NA
+      hard_buttons <- strsplit(RT_df$cumulative_RT_hard_effort, ",")
+     # hard_buttons %>% str_match("[0-9]+") %>%  as.numeric()
+      for (i in 1:length(hard_buttons)){
+      # only move forward if this isn't an NA for this trial.
+        if (!is.na(hard_buttons[[i]])){
+            # count number of presses in this trial
+            RT_df$N_hard_button_press[i] <- length(hard_buttons[[i]])
+            # get RT for presses in this trial
+
+            RT_hard_button_press_temp <- as.numeric(cbind(str_extract(hard_buttons[[i]], "[0-9.]+")))
+            # they are cumulative, so need to subtract from the button press before to get actual RT for each press.
+            # this formula is going to depend on how many presses there are for a given trial.
+            RT_hard_button_press_temp2 <- NA
+            for (k in 1:length(RT_hard_button_press_temp)){
+               if (k == 1){
+                 RT_hard_button_press_temp2[k] <- RT_hard_button_press_temp[k]
+               } else {
+                  RT_hard_button_press_temp2[k] <- RT_hard_button_press_temp[k] - RT_hard_button_press_temp[k-1]
+               }
+            }
+            RT_df$mean_RT_hard_button_press[i] <- mean(RT_hard_button_press_temp2)
+            RT_df$median_RT_hard_button_press[i] <- median(RT_hard_button_press_temp2)
+
+        } else {
+            # just mark as NA.
+            RT_df$N_hard_button_press[i] <- NA
+            RT_df$mean_RT_hard_button_press[i] <- NA
+            RT_df$median_RT_hard_button_press[i] <- NA
+
+        }
+      }
+     sub_df2 <- data.frame(SUB, Run_number, keyboard_version, sub_df)
+     sub_df3 <- left_join(sub_df2, RT_df, by = c("date", "Trial_Number")) 
+        # add data for each subject to list of data frames 
+        data.long <- rbind(data.long, sub_df3)
 }
 
-save(effort_RT_long, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_effort_RT_during_task_trials.Rdata")
+#head(data.long)
 
+behavior_long_data <- data.long
+save(behavior_long_data, file = "../../behavioral_data/3_effort_task_data/compiled/compiled_long_format_all_data_with_buttonpress.Rdata")
 ```

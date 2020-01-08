@@ -1,0 +1,285 @@
+---
+title: "Clean cope files (betas) for analysis"
+author: "Michelle.VanTieghem"
+date: "Dec 1, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Notes 
+updating December to use complete model EV, and new sublists for the follow-up contrasts \
+new sublits are locatetd in 8_brain_ROI_analyses/sublists/ \
+basic copes = every subject has these. N = 127 with PA255 data finally added \
+choice contrast EVS = only subjects with at least 8 hard and 8 easy choices \
+hard FB contrast EVS = only subjects with at least 8 trials of hard setbacks and 8 trials of hard rewards \
+
+```{r, include = F, warning = F, message = F }
+library(tidyverse)
+```
+
+## load 'complete EV' cope key
+this is the updated model with all possiblee contrasts in a single model \
+this was generated in 6_brain_preproc_level1_by_run/1_makee_level1_fsfs_template.Rmd \
+```{r}
+
+path <- "../8_brain_ROI_analysis/pulled_betas/"
+
+load("../6_brain_preproc_level1_by_run/complete_EV_model_cope_key.Rdata")
+
+
+```
+
+# load betas from raw text files 
+## basic copes first (all subjects)
+```{r}
+# make a key for these copes 
+basic_cope_key <- cope_key %>% 
+  rename(contrast = cope_list) %>%
+  mutate(directory = paste0("basic_copes/cope", cope_number, contrast, "/")) %>%
+  # only include the 13 contrasts that we want to look at right now.
+  filter(cope_number %in% c(10, 15, 16, 17))
+
+
+# make an empty df to store ifno
+cope_df_single <- data.frame(SUBJECTID = NA, beta = NA, ROI = NA, contrast = NA, cope_number = NA)
+
+## make a loop to grab subject-level files 
+
+# each cope data is in a separate directory
+for (dir in basic_cope_key$directory){
+  print (dir)
+ # dir <- cope_key$directory[1]
+  cope_info <- basic_cope_key %>%
+    filter(directory == dir)
+  
+  # get list of files in this directory
+  cope_files <- list.files(paste0(path, dir))
+  
+  # loop through the files and save info
+  for (file in cope_files){
+   df <- read.table(paste0(path, dir, file))
+       # pull out relevant info into better format
+       names(df) <- "beta"
+       df$contrast<- ifelse(cope_info$contrast == "allChoices", "choice", 
+                           ifelse(cope_info$contrast == "RewardFB", "reward", 
+                                          ifelse(cope_info$contrast == "SetbackFB", "setback", 
+                                                 ifelse(cope_info$contrast == "Reward-SetbackFB", "reward_setback", 
+                                                         cope_info$contrast))))
+   
+      df$SUBJECTID <- substr(file, 1, 5)
+      df$cope_number <- cope_info$cope_number
+      file_split <- unlist(strsplit(file, paste0("_cope",cope_info$cope_number)))[1]
+      stuff <- unlist(strsplit(file_split, paste0(df$SUBJECTID, "_")))
+      df$ROI <- ifelse(grepl("Right_Amygdala", stuff[2]), "R_Amyg", 
+                             ifelse(grepl("Left_Amygdala", stuff[2]), "L_Amyg",
+                                          ifelse(grepl("choice_ACC",stuff[2]), "ACC", 
+                                                       ifelse(grepl("choice_mPFC",stuff[2]) ,"choice_mPFC", 
+                                                                    ifelse(grepl("FB_mPFC", stuff[2]), "FB_mPFC", 
+                                                                                 ifelse(grepl("FB_vmPFC",stuff[2]), "vmPFC", 
+                                                                                        ifelse(grepl("Striatum", stuff[2]), "VS", 
+                                                                                               ifelse(grepl("Right_Accumbens", stuff[2]), "R_Nacc", 
+                                                                                        ifelse(grepl("Left_Accumbens", stuff[2]), "L_Nacc", "fix")))))))))
+
+    # merge together!
+      cope_df_single <- rbind(cope_df_single, df)
+  }
+}
+
+#tail(cope_df_single)
+
+# check the long versin of the dat 
+cope_df <- cope_df_single %>%
+  filter(!is.na(SUBJECTID)) %>%
+  mutate(cope_ROI = paste0(contrast,"_", ROI)) 
+
+## reformat so a single row per subject
+basic_cope_df_wide <- cope_df %>%
+  select(SUBJECTID, cope_ROI, beta) %>%
+  group_by(SUBJECTID) %>%
+  spread(value = beta, key = cope_ROI)
+
+nrow(basic_cope_df_wide) # 127 subjects!
+```
+
+## choice contrast copes ( subset) 
+```{r}
+# make a key for these copes 
+choice_contrast_cope_key <- cope_key %>% 
+  rename(contrast = cope_list) %>%
+  mutate(directory = paste0("choice_contrast_copes/cope", cope_number, contrast, "/")) %>%
+  # only include the 13 contrasts that we want to look at right now.
+  filter(cope_number %in% c(1, 2, 11))
+
+# make an empty df to store ifno
+cope_df_single <- data.frame(SUBJECTID = NA, beta = NA, ROI = NA, contrast = NA, cope_number = NA)
+
+## make a loop to grab subject-level files 
+
+# each cope data is in a separate directory
+for (dir in choice_contrast_cope_key$directory){
+  print (dir)
+ # dir <- cope_key$directory[1]
+  cope_info <- choice_contrast_cope_key %>%
+    filter(directory == dir)
+  
+  # get list of files in this directory
+  cope_files <- list.files(paste0(path, dir))
+  
+  # loop through the files and save info
+  for (file in cope_files){
+   df <- read.table(paste0(path, dir, file))
+       # pull out relevant info into better format
+       names(df) <- "beta"
+       df$contrast<- ifelse(cope_info$contrast =="HardChoice", "hard_choice", 
+                    ifelse(cope_info$contrast == "EasyChoice", "easy_choice", 
+                     ifelse(cope_info$contrast == "Hard-EasyChoice", "hard_easy_choice", "Fix")))
+                     
+      df$SUBJECTID <- substr(file, 1, 5)
+      df$cope_number <- cope_info$cope_number
+      file_split <- unlist(strsplit(file, paste0("_cope",cope_info$cope_number)))[1]
+      stuff <- unlist(strsplit(file_split, paste0(df$SUBJECTID, "_")))
+      df$ROI <- ifelse(grepl("Right_Amygdala", stuff[2]), "R_Amyg", 
+                             ifelse(grepl("Left_Amygdala", stuff[2]), "L_Amyg",
+                             ifelse(grepl("choice_ACC",stuff[2]), "ACC", 
+                                 ifelse(grepl("choice_mPFC",stuff[2]) ,"choice_mPFC", 
+                             ifelse(grepl("FB_mPFC", stuff[2]), "FB_mPFC", 
+                                     ifelse(grepl("FB_vmPFC",stuff[2]), "vmPFC", 
+                             ifelse(grepl("Striatum", stuff[2]), "VS", 
+                                        ifelse(grepl("Right_Accumbens", stuff[2]), "R_Nacc", 
+                                       ifelse(grepl("Left_Accumbens", stuff[2]), "L_Nacc", "fix")))))))))
+
+    # merge together!
+      cope_df_single <- rbind(cope_df_single, df)
+  }
+}
+
+
+# check the long versin of the dat a
+cope_df <- cope_df_single %>%
+  filter(!is.na(SUBJECTID)) %>%
+  mutate(cope_ROI = paste0(contrast,"_", ROI)) 
+
+## reformat so a single row per subject
+choice_contrast_cope_df_wide <- cope_df %>%
+  select(SUBJECTID, cope_ROI, beta) %>%
+  group_by(SUBJECTID) %>%
+  spread(value = beta, key = cope_ROI)
+
+# make sure you have betas for all subjects to be included in this! 
+load("../8_brain_ROI_analysis/sublists/subs_with_8_trials_for_choice_contrast_EVs.Rdata")
+# yes, sublist = same length as this dataframe 
+identical(length(choice_contrast_sublist), nrow(choice_contrast_cope_df_wide))
+
+```
+
+## hard FB contrast copes ( subset) 
+```{r}
+# make a key for these copes 
+hard_FB_contrast_cope_key <- cope_key %>% 
+  rename(contrast = cope_list) %>%
+  mutate(directory = paste0("hard_FB_contrast_copes/cope", cope_number, contrast, "/")) %>%
+  # only include the 13 contrasts that we want to look at right now.
+  filter(cope_number %in% c(5, 6, 21))
+
+# make an empty df to store ifno
+cope_df_single <- data.frame(SUBJECTID = NA, beta = NA, ROI = NA, contrast = NA, cope_number = NA)
+
+## make a loop to grab subject-level files 
+
+# each cope data is in a separate directory
+for (dir in hard_FB_contrast_cope_key$directory){
+  print (dir)
+ # dir <- cope_key$directory[1]
+  cope_info <- hard_FB_contrast_cope_key %>%
+    filter(directory == dir)
+  
+  # get list of files in this directory
+  cope_files <- list.files(paste0(path, dir))
+  
+  # loop through the files and save info
+  for (file in cope_files){
+   df <- read.table(paste0(path, dir, file))
+       # pull out relevant info into better format
+       names(df) <- "beta"
+       df$contrast <- ifelse(cope_info$contrast == "HardReward-HardSetback", "hard_reward_setback", 
+                       ifelse(cope_info$contrast == "HardReward", "hard_reward", 
+                        ifelse(cope_info$contrast == "HardSetback", "hard_setback", "fix")))
+      df$SUBJECTID <- substr(file, 1, 5)
+      df$cope_number <- cope_info$cope_number
+      file_split <- unlist(strsplit(file, paste0("_cope",cope_info$cope_number)))[1]
+      stuff <- unlist(strsplit(file_split, paste0(df$SUBJECTID, "_")))
+      df$ROI <- ifelse(grepl("Right_Amygdala", stuff[2]), "R_Amyg", 
+                             ifelse(grepl("Left_Amygdala", stuff[2]), "L_Amyg",
+                             ifelse(grepl("choice_ACC",stuff[2]), "ACC", 
+                                 ifelse(grepl("choice_mPFC",stuff[2]) ,"choice_mPFC", 
+                             ifelse(grepl("FB_mPFC", stuff[2]), "FB_mPFC", 
+                                     ifelse(grepl("FB_vmPFC",stuff[2]), "vmPFC", 
+                             ifelse(grepl("Striatum", stuff[2]), "VS", 
+                                        ifelse(grepl("Right_Accumbens", stuff[2]), "R_Nacc", 
+                                       ifelse(grepl("Left_Accumbens", stuff[2]), "L_Nacc", "fix")))))))))
+
+    # merge together!
+      cope_df_single <- rbind(cope_df_single, df)
+  }
+}
+
+
+# check the long versin of the dat a
+cope_df <- cope_df_single %>%
+  filter(!is.na(SUBJECTID)) %>%
+  mutate(cope_ROI = paste0(contrast,"_", ROI)) 
+
+## reformat so a single row per subject
+hard_FB_contrast_cope_df_wide <- cope_df %>%
+  select(SUBJECTID, cope_ROI, beta) %>%
+  group_by(SUBJECTID) %>%
+  spread(value = beta, key = cope_ROI)
+
+# make sure you have betas for all subjects to be included in this! 
+load("../8_brain_ROI_analysis/sublists/subs_with_8_trials_for_hard_FB_contrast_EVs.Rdata")
+# yes, sublist = same length as this dataframe 
+identical(length(hard_FB_contrast_sublist), nrow(hard_FB_contrast_cope_df_wide))
+
+```
+
+## merge all 3 dataframes into one. 
+```{r}
+cope_df_wide <- basic_cope_df_wide %>%
+  left_join(., choice_contrast_cope_df_wide, by = "SUBJECTID", all = T) %>%
+  left_join(., hard_FB_contrast_cope_df_wide, by = "SUBJECTID", all = T)
+
+nrow(cope_df_wide) # correct number rof rows per subject! 
+#names(cope_df_wide)
+
+```
+   
+## cleaning stuff up 
+makign amygdala betas bilateral instead of L & R 
+```{r}
+# find amygdala copes 
+amyg_vars <- names(cope_df_wide)[grepl("Amyg", names(cope_df_wide))]
+
+# get average of amygdala L/R 
+cope_df_wide <- cope_df_wide %>%
+  mutate(choice_Amyg = (choice_L_Amyg + choice_R_Amyg)/2, 
+           hard_choice_Amyg = (hard_choice_L_Amyg + hard_choice_R_Amyg)/2, 
+           easy_choice_Amyg = (easy_choice_L_Amyg + easy_choice_R_Amyg)/2, 
+           hard_easy_choice_Amyg = (hard_easy_choice_L_Amyg + hard_easy_choice_R_Amyg)/2, 
+           hard_reward_Amyg = (hard_reward_L_Amyg + hard_reward_R_Amyg)/2, 
+           hard_reward_setback_Amyg = (hard_reward_setback_L_Amyg +hard_reward_setback_R_Amyg)/2, 
+           hard_setback_Amyg = (hard_setback_L_Amyg + hard_setback_R_Amyg)/2, 
+           reward_setback_Amyg = (reward_setback_L_Amyg + reward_setback_R_Amyg)/2, 
+           reward_Amyg= (reward_L_Amyg+ reward_R_Amyg)/2, 
+           setback_Amyg= (setback_L_Amyg+ setback_R_Amyg)/2) %>%
+  select(-contains ("_R_Amyg"), -contains ("_L_Amyg"))
+         
+nrow(cope_df_wide)
+```
+
+
+## save! 
+```{r}
+complete_EV_copes <- cope_df_wide
+save(complete_EV_copes, file = "FSL_cope_files/complete_EV_copes.Rdata")
+```

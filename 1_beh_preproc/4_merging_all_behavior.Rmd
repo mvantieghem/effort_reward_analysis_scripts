@@ -23,7 +23,7 @@ load( "../../behavioral_data/3_Effort_task_data/compiled/compiled_effort_scan_ve
 # no duplicated rows! 
 run_check <- behavior_run_data %>%
   group_by(SUBJECTID) %>%
-  summarize(N_runs = n()) %>%
+  dplyr::summarize(N_runs = n()) %>%
   filter(N_runs > 2)
 run_check
 

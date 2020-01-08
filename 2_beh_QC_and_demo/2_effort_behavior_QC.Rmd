@@ -16,11 +16,15 @@ output:
 # notes on Exclusion criterion
 Behavioral data:  All behavioral data, collected in or out of the scanner, will be considered for these analyses. Participants who completed at least 1 run of usable behavioral data will be included in the analyses. Runs with <70% responses during the choice phase will be excluded from all behavior analyses.
 
+```{r, warning = F, message = F}
+source("../../0_R_analysis_setup_file.R", echo=F)
+```
 
 # load data 
 all behavior data combined, by run.
 ```{r, warning = F, message = F}
-library(tidyverse)
+
+
 load( "../../behavioral_data/combined_behavior_master/combined_effort_ft_pt_behavior_by_run_all_data.Rata")
 
 # get rid of fake subjectIDs - test things 
