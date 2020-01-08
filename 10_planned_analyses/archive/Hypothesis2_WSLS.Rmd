@@ -1,0 +1,654 @@
+---
+title: "Hypothesis 2 analysis"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+## Hypothesis 2: WSLS Strategies \
+*COMPS:* Effort X Feedback interaction, more likely to stay after a hard-effort setback than hard-effort reward, or easy-effort setback/reward. \
+Main effects of sex, reinforcement rate, trialN. \
+
+*GROUP2:* Group x Effort x Feedback interaction, ECA are more likely to show win-stay behavior following a hard-effort reward than comparisons. At trend level, ECA are more likely to show lose-stay behavior following an easy-effort setback than comparisons. Also main effects of sex, age, reinforcement rate, trial N \
+
+*GROUP3:* Group x Effort x Feedback interaction, DA > PI > COMP for win-stay behavior following hard-effort reward.  \
+
+*GROUP4:* Group x Effort x Feedback interaction, DC > DA > PI > COMP for win-stay behavior following hard-effort reward. So sub-group differences in reward sensitivity. \
+
+*No group differences for hard-effort setbacks*: all subjects are showing similar levels of persistence behavior across groups! but still individual differences to look at! 
+
+
+# WSLS
+## prep data 
+using the entire dataset, including misses...
+```{r}
+# make a copy of the dataset, remove all of the first trials, and mark them as 100 to keep out of place.
+df_copy2 <- df_use %>%
+  mutate(Trial_Number = Trial_Number + 1) %>%
+  select(SUBJECTID, Run_number, Trial_Number, Effort_Choice, Reward_received) %>%
+  rename(Effort_Choice_prior = Effort_Choice, 
+         Reward_received_prior = Reward_received)
+
+# now re-sort the data, so that all trials are shifted up 1 place. 
+df_copy2 <- df_copy2[order(df_copy2$SUBJECTID, df_copy2$Run_number, df_copy2$Trial_Number),]
+
+#head(df_copy2)
+
+# now merge this new thing with orig data, by sub, run, and Trial_Number! 
+df_use2 <- merge(df_use, df_copy2, by = c("SUBJECTID", "Run_number", "Trial_Number"), all = T) %>%
+  filter(!is.na(Effort_Choice ))
+
+```
+
+## calculate stay-shift variables, 1 = stay, 0 = shift
+
+```{r}
+df_use3 <- df_use2 %>%
+  # don't include missed choices. 
+  mutate(stay_shift = ifelse(Effort_Choice == Effort_Choice_prior, 1, 0),
+         reward_received_prior_inclturtle = ifelse(Reward_received_prior == 0 | is.na(Reward_received_prior), 0, 1))
+
+summary(as.factor(df_use3$Effort_Choice_prior))
+summary(as.factor(df_use3$Reward_received_prior))
+summary(as.factor(df_use3$reward_received_prior_inclturtle))
+```
+
+## filter data for analysis: exclude: 
+runs extreme reinforcement rates
+runs with low response for choices, or too many turtles
+runs with 0 for any of the cells in the feedback x effort interaction
+trials where the current choice was missed.
+```{r}
+df_use_WSLS <- df_use3 %>%
+  # exclude extreme reinforcement rates. 
+ filter(Reinforce_rate > .3 & Reinforce_rate < .7 & 
+          # exclude people with too many missing
+          Prop_tooslow < .5 & N_choices_resp > 15 & 
+          # exclude pppl with zero of each 4 cells for interaction
+          N_easy_setback > 0 & N_hard_setback > 0 &
+          N_hard_reward > 0 & N_easy_reward > 0 &
+          # exclude missed choices on the current trial, and prior trial
+          # because stay/shift is meaningless for them. 
+          Effort_Choice_prior != "Miss" &
+          Effort_Choice != "Miss") %>%
+  mutate(Reward_received_prior = as.factor(as.character(Reward_received_prior)),
+         reward_received_prior_inclturtle = as.factor(as.character(reward_received_prior_inclturtle)),
+         Effort_Choice_prior = as.factor(ifelse(Effort_Choice_prior == "Easy", 0,
+                                                   ifelse(Effort_Choice_prior == "Hard", 1, NA))),
+         Effort_Choice.n = as.numeric(ifelse(Effort_Choice == "Easy", 0, 
+                                             ifelse(Effort_Choice == "Hard", 1, NA))))
+  
+
+# why isn't this converion working?? fix late.r
+summary(df_use_WSLS$Reward_received_prior)
+summary(df_use_WSLS$reward_received_prior_inclturtle)
+```
+
+## add prop. hard effort as covariate at subj level
+```{r}
+subj_prop_hard <- df_use_no_miss %>%
+  group_by(IDENT_SUBID) %>%
+  summarize(prop_hard_choices = mean(Effort_Choice.n))
+
+
+df_use_WSLS <- merge(df_use_WSLS, subj_prop_hard, by = "IDENT_SUBID")
+
+```
+
+## make mean centered variables
+```{r}
+
+df_use_WSLS <- df_use_WSLS %>%
+  mutate (Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+          AGE.c = AGE - mean(AGE, na.rm = T), 
+          SEX.c = Sex - mean(Sex, na.rm = T), 
+          Trial_Number.c = Trial_Number - mean(Trial_Number, na.rm= T), 
+          prop_hard_choices.c = prop_hard_choices - mean(prop_hard_choices, na.rm = T))
+
+```
+
+
+# Hypothesis 2: WSLS behavior (excluding turtle trials)
+## mod 1: COMPS
+
+```{r}
+WSLS_mod1 <- glmer(stay_shift ~ Reward_received_prior * Effort_Choice_prior + 
+                      Reinforce_rate.c + AGE.c + SEX.c + Trial_Number.c + prop_hard_choices.c + 
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP.2 == 0), 
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod1)
+```
+
+main effect of age - stay behavior decreased with age
+main effect of trial number - stay behavior increased over time
+main effect of reinforce rate - stay behavior increased with higher reinforcement rate
+main effect of sex - females stayed more than males?
+
+### significant interaction of prior effort & feedback
+```{r}
+# get individual data
+WSLS_subj_summary <- df_use_WSLS %>%
+  filter(GROUP.2 == 0) %>%
+        mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward")) %>%
+  group_by(SUBJECTID, Effort_Choice_prior, Reward_received_prior) %>%
+  summarize(stay_shift = mean(stay_shift, na.rm = T))
+
+
+WSLS_effect <- as.data.frame(effect("Reward_received_prior:Effort_Choice_prior", WSLS_mod1, confint=TRUE)) %>%
+  mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward"))
+
+WSLS_plot <- ggplot(WSLS_effect, aes(x = Reward_received_prior, y = fit, fill = Effort_Choice_prior)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_dotplot(data = WSLS_subj_summary,position = "dodge",
+       aes(x = Reward_received_prior, y = stay_shift), 
+       alpha = 0.3, stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1.5) + 
+   theme(legend.position = "none") +
+   theme_classic() + my_colors + my_colors2 + ylab ("Stay = 1 , Shift = 0") + xlab ("Feedback on prior trial")
+
+pdf("figures/Hypothesis2_comp_WSLS_effortxfeedback.pdf", width = 6, height = 4)
+WSLS_plot
+dev.off()
+```
+
+***do post-hoc test to see which conditions are sig different from 0.5% 
+
+### does age interact? no.
+```{r}
+WSLS_mod1c <- glmer(stay_shift ~  AGE.c*Effort_Choice_prior*Reward_received_prior +
+                      Reinforce_rate +    SEX.c + Trial_Number.c +prop_hard_choices.c + 
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP.2 == 0), 
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod1c)
+```
+
+### does interact with trialN?
+```{r}
+WSLS_mod1d <- glmer(stay_shift ~  Trial_Number.c*Effort_Choice_prior*Reward_received_prior + 
+                      Reinforce_rate +    SEX.c +  AGE.c +prop_hard_choices.c + 
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP.2 == 0), 
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod1d)
+```
+
+over the course of the task, kids always choose hard again after a hard setback. but they increase in how much they persist after a hard reward.
+```{r}
+plot(effect("Trial_Number.c:Effort_Choice_prior:Reward_received_prior", WSLS_mod1d), multiline = T)
+```
+
+
+plot with ggplot
+```{r}
+WSLS_effect <- as.data.frame(effect("Trial_Number.c:Effort_Choice_prior:Reward_received_prior", WSLS_mod1d, confint=TRUE)) %>%
+  mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward"), 
+          Trial_Number = Trial_Number.c + mean(df_use_no_miss$Trial_Number, na.rm = T))
+
+
+plot_effect <- ggplot(WSLS_effect,aes(x = Trial_Number, y = fit)) +
+   geom_line(size = 1, aes(group = Effort_Choice_prior, color = Effort_Choice_prior)) + geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = Effort_Choice_prior, fill = Effort_Choice_prior), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Stay = 1 , Shift = 0") + 
+  xlab ("Trial Number") + facet_grid(~Reward_received_prior)
+ 
+  
+pdf("figures/Hypothesis2_comp_WSLS_effortxfeedbackxtrialN.pdf", width = 6, height = 4)
+plot_effect
+dev.off()
+```
+
+
+
+## mod 2: GROUP (ECA vs. COMP) 
+does group interact with effort & prior fB? 
+```{r}
+
+WSLS_mod2 <- glmer(stay_shift ~ GROUP.2 * Reward_received_prior * Effort_Choice_prior + 
+                      Reinforce_rate.c + AGE.c + SEX.c + Trial_Number.c + prop_hard_choices.c + 
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_WSLS,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod2)
+
+```
+
+
+### main effect of Trial N
+shifting decreases, staying increases over AGE.c.
+this is kind of confusing, because they are making fewer hard effort choices over time. 
+```{r}
+
+plot(effect("Trial_Number.c", WSLS_mod2))
+```
+
+### main effect of AGE
+kids actually get less persistent with older AGE.c! 
+developing smarter decision-making strategies? 
+```{r}
+
+plot(effect("AGE.c", WSLS_mod2))
+```
+
+### main effect of Prop hard choices 
+more likely to show more stay behavior if you choose more hard choices.
+```{r}
+plot(effect("prop_hard_choices.c", WSLS_mod2))
+
+
+```
+
+### main effect of reinforcement rate 
+more likely to show more stay behavior if you have higher rate of reinforcement
+```{r}
+plot(effect("Reinforce_rate.c", WSLS_mod2))
+
+```
+
+
+### post-hoc of 3 way interaction.
+ECA show more win-stay behavior following a hard-effort reward than comps.
+ECA show trend level more lose-stay behavior following an easy-effort setback than comps. 
+No difference in lose-stay behavior following hard-effort setbacks
+no difference in win-stay behavior following easy-effort rewards
+```{r}
+# reference of reward received = setback
+# reference group for GROUP = COMP
+# reference of effort choice = Easy
+group_diff_easy_setback <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP.2", "Effort_Choice_prior1", 0, WSLS_mod2)) # this reflects setbacks because Reward received 0= reference.
+
+group_diff_hard_setback <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP.2", "Effort_Choice_prior1", 1, WSLS_mod2))# this reflects setbacks because Reward received 0= reference.
+
+# make a variable with reward as the reference group! 
+df_use_WSLS$Reward_received_prior_RewardRef <- as.factor(ifelse(df_use_WSLS$Reward_received_prior == 0, 1, 0))
+
+WSLS_mod2_RewardRef <- glmer(stay_shift ~ GROUP.2 * Reward_received_prior_RewardRef * Effort_Choice_prior + 
+                      Reinforce_rate + AGE.c + SEX.c + Trial_Number.c +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_WSLS,
+                    control = glmerControl(optimizer = "bobyqa"))
+
+# reference of effort choice = Easy
+group_diff_easy_reward <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP.2", "Effort_Choice_prior1", 0, WSLS_mod2_RewardRef)) # this reflects setbacks because Reward received 0= reference.
+
+group_diff_hard_reward <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP.2", "Effort_Choice_prior1", 1, WSLS_mod2_RewardRef))# this reflects setbacks because Reward received
+
+posthoc_table <- rbind(group_diff_easy_reward, group_diff_hard_reward, group_diff_easy_setback, group_diff_hard_setback)
+
+posthoc_table <- posthoc_table %>%
+  dplyr::select(-w0.intercept) %>%
+  dplyr::select(GROUP, w1.slope, t.val, p.val, lower95, upper95)
+
+names(posthoc_table) <- c( "Contrast", "Difference", "t value", "p value", "lower 95% CI", "upper 95 CI%")
+posthoc_table$Contrast <- c("ECAvsCOMP easy reward", "ECAvsCOMP  hard reward", "ECAvsCOMP easy setback", "ECAvsCOMP hard setback")
+posthoc_table
+save(posthoc_table, file = "behavior_model_output/Hypothesis2_group_posthoc.Rdata")
+```
+
+### plot this in ggplot!
+note: individual data points represent subject-specific averages! 
+```{r}
+# calculate subject-specific proportions of stay vs. shift, for each of 4 conditions.
+WSLS_subj_summary <- df_use_WSLS %>%
+        mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward")) %>%
+  group_by(SUBJECTID, Effort_Choice_prior, Reward_received_prior) %>%
+  summarize(stay_shift = mean(stay_shift, na.rm = T), 
+            GROUP.2 = mean(as.numeric(as.character(GROUP.2)), na.rm = T)) %>%
+     mutate(GROUP.2 = ifelse(GROUP.2 == 0, "COMP", "ECA"))
+
+
+WSLS_effect <- as.data.frame(effect("GROUP:Reward_received_prior:Effort_Choice_prior", WSLS_mod2, confint=TRUE)) %>%
+  mutate(GROUP = ifelse(GROUP.2 == 0, "COMP", "ECA"), 
+         Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward"))
+
+WSLS_plot <- ggplot(WSLS_effect, aes(x = Effort_Choice_prior, y = fit, fill = GROUP.2)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_dotplot(data = WSLS_subj_summary,position = "dodge",
+       aes(x = Effort_Choice_prior, y = stay_shift, color = GROUP), 
+       alpha = 0.3, stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1.5) + 
+   facet_grid (~Reward_received_prior) + theme(legend.position = "none") +
+   theme_classic() + my_colors + my_colors2 + ylab ("Stay = 1 , Shift = 0") + xlab ("Effort Choice")
+
+pdf("figures/Hypothesis2_WSLS_groupxeffortxfeedback.pdf", width = 6, height = 4)
+WSLS_plot
+dev.off()
+```
+
+
+## mod 3: GROUP subtypes (PI vs. DA vs. COMP) 
+SIG INTERACTION! 
+```{r}
+
+
+WSLS_mod3 <- glmer(stay_shift ~ Reward_received_prior * Effort_Choice_prior * GROUP.3 + 
+                      Reinforce_rate.c + AGE.c + SEX.c + Trial_Number.c + prop_hard_choices.c + 
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_WSLS,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod3)
+
+```
+
+
+
+### plot: DAs show more sensitivity to hard-rewards 
+```{r}
+# calculate subject-specific proportions of stay vs. shift, for each of 4 conditions.
+WSLS_subj_summary <- df_use_WSLS %>%
+  filter(!is.na(GROUP.3)) %>%
+        mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward")) %>%
+  group_by(SUBJECTID, Effort_Choice_prior, Reward_received_prior) %>%
+  summarize(stay_shift = mean(stay_shift, na.rm = T), 
+            GROUP.3 = mean(as.numeric(as.character(GROUP.3)), na.rm = T)) %>%
+     mutate(GROUP.3.f = ifelse(GROUP.3 == 0, "COMP", ifelse(GROUP.3 == 1, "PI","DA")))
+
+
+WSLS_effect <- as.data.frame(effect("Reward_received_prior:Effort_Choice_prior:GROUP.3", 
+                                    WSLS_mod3, confint=TRUE)) %>%
+  # get rid of 0.5 group estimations.
+  filter(GROUP.3 == 1 | GROUP.3 == 0 | GROUP.3 == 2) %>%
+  mutate(GROUP.3.f = ifelse(GROUP.3 == 0, "COMP", ifelse(GROUP.3 == 1, "PI", "DA")), 
+         Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward"))
+
+WSLS_plot <- ggplot(WSLS_effect, aes(x = Effort_Choice_prior, y = fit, fill = GROUP.3.f)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_dotplot(data = WSLS_subj_summary,position = "dodge",
+       aes(x = Effort_Choice_prior, y = stay_shift, color = GROUP.3.f), 
+       alpha = 0.3, stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   facet_grid (~ Reward_received_prior) + theme(legend.position = "none") +
+   theme_classic() + my_colors + my_colors2 + ylab ("Stay = 1 , Shift = 0") + xlab ("Effort Choice")
+
+pdf("figures/Hypothesis2_WSLS_group.3xeffortxfeedback.pdf")
+WSLS_plot
+dev.off()
+```
+
+
+## mod 3b: across 4 GROUP subtypes (PI vs. DA vs. COMP vs. DC) 
+```{r}
+
+WSLS_mod3b <- glmer(stay_shift ~ Reward_received_prior * Effort_Choice_prior * GROUP.4 + 
+                      Reinforce_rate.c + AGE.c + SEX.c + Trial_Number.c + prop_hard_choices.c + 
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_WSLS,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod3b)
+
+```
+
+
+### N per 4 groups for this
+```{r}
+# calculate subject-specific proportions of stay vs. shift, for each of 4 conditions.
+WSLS_subj_summary <- df_use_WSLS %>%
+        mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward")) %>%
+  group_by(SUBJECTID, Effort_Choice_prior, Reward_received_prior) %>%
+  summarize(stay_shift = mean(stay_shift, na.rm = T), 
+            GROUP.4 = mean(as.numeric(as.character(GROUP.4)), na.rm = T)) %>%
+     mutate(GROUP.4.f = ifelse(GROUP.4 == 0, "COMP", ifelse(GROUP.4 == 1, "PI",
+                                                                    ifelse(GROUP.4 == 2, "DA", "DC"))))
+
+summary(as.factor(WSLS_subj_summary$GROUP.4.f))
+```
+
+### plot:
+```{r}
+WSLS_effect <- as.data.frame(effect("Reward_received_prior:Effort_Choice_prior:GROUP.4", 
+                                    WSLS_mod3b, confint=TRUE)) %>%
+  # get rid of 0.5 group estimations.
+  filter(GROUP.4 == 1 | GROUP.4 == 0 | GROUP.4 == 2 | GROUP.4 == 3) %>%
+  mutate(GROUP.4.f = ifelse(GROUP.4 == 0, "COMP", ifelse(GROUP.4 == 1, "PI", 
+                                                                 ifelse(GROUP.4 == 2, "DA", "DC"))), 
+         Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward"))
+summary(as.factor(WSLS_effect$GROUP.4.f))
+
+WSLS_plot <- ggplot(WSLS_effect, aes(x = Effort_Choice_prior, y = fit, fill = GROUP.4.f)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_dotplot(data = WSLS_subj_summary,position = "dodge",
+       aes(x = Effort_Choice_prior, y = stay_shift, color = GROUP.4.f), 
+       alpha = 0.3, stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   facet_grid (~ Reward_received_prior) + theme(legend.position = "none") +
+   theme_classic() + ylab ("Stay = 1 , Shift = 0") + xlab ("Effort Choice")
+
+#pdf("figures/Hypothesis2_WSLS_groupxeffortxfeedback.pdf")
+WSLS_plot
+#dev.off()
+```
+
+
+# symptom follow-up
+Does WSLS behavior moderate effect of group on symptoms?
+
+## get data for analysis
+### get subject-level data for WSLS behavior in each condition of the task
+```{r}
+# get subject-level proportions of win-stay lose-shift behavior for the 4 conditions 
+subj_level_df <- df_use_WSLS %>%
+  group_by(IDENT_SUBID, Effort_Choice_prior, Reward_received_prior) %>%
+  summarize(prop_stay = mean(stay_shift), 
+            AGE = mean(AGE), 
+            Sex = mean(Sex), 
+            GROUP = mean(as.numeric(as.character(GROUP))), 
+            GROUP.4 = mean(as.numeric(as.character(GROUP.4))), 
+            Reinforce_rate = mean(Reinforce_rate, na.rm = T)) # where 1 = all stays, 0 = all shifts
+tail(subj_level_df)
+
+# make this a wide DF
+WSLS_hard_reward <- subj_level_df %>%
+  filter(Effort_Choice_prior == 1 & Reward_received_prior == 1) %>%
+  rename("prop_stay_hard_reward" = prop_stay) %>%
+  select(IDENT_SUBID, GROUP, GROUP.4, Sex, AGE, prop_stay_hard_reward, Reinforce_rate)
+
+WSLS_hard_setback <- subj_level_df %>%
+  filter(Effort_Choice_prior == 1 & Reward_received_prior == 0) %>%
+  rename("prop_stay_hard_setback" = prop_stay)%>%
+  select(IDENT_SUBID,prop_stay_hard_setback)
+
+WSLS_easy_reward <- subj_level_df %>%
+  filter(Effort_Choice_prior == 0 & Reward_received_prior == 1) %>%
+  rename("prop_stay_easy_reward" = prop_stay)%>%
+  select(IDENT_SUBID, prop_stay_easy_reward)
+
+WSLS_easy_setback <- subj_level_df %>%
+  filter(Effort_Choice_prior == 0 & Reward_received_prior == 0) %>%
+  rename("prop_stay_easy_setback" = prop_stay)%>%
+  select(IDENT_SUBID, prop_stay_easy_setback)
+
+WSLS_subj_level <- merge(WSLS_hard_reward, WSLS_hard_setback, by = "IDENT_SUBID" )
+WSLS_subj_level <- merge(WSLS_subj_level, WSLS_easy_reward, by = "IDENT_SUBID" ) %>%
+  select(-starts_with("Effort"))
+WSLS_subj_level <- merge(WSLS_subj_level, WSLS_easy_setback, by = "IDENT_SUBID" ) %>%
+  select(-starts_with("Effort"))
+head(WSLS_subj_level)
+```
+
+### get symptom data from master.
+```{r}
+library(readxl)
+master <- read_excel("../subj_demo/MASTER_20190502.xlsx")
+
+RCADS_master <- master %>%
+  select(IDENT_SUBID, starts_with("J.RCADS")) %>%
+  select(-ends_with("missing_new"))
+
+CBCL_master <- master %>%
+  select(IDENT_SUBID, starts_with("CBCL"))
+```
+
+
+### merge with subj level behavior
+```{r}
+# combine subject-level computations of WSLS and proportion hard
+subj_level_all <- merge(WSLS_subj_level, subj_prop_hard, by = "IDENT_SUBID")
+# add master 
+subj_level_all <- merge(subj_level_all, RCADS_master, by = "IDENT_SUBID")
+subj_level_all <- merge(subj_level_all, CBCL_master, by = "IDENT_SUBID")
+
+head(subj_level_all)
+
+```
+
+## RCADS Total
+```{r}
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = J.RCADS_Total_Score_T_new, color = as.factor(GROUP))) + 
+  theme_classic() + geom_violin() + geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+```{r}
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = J.RCADS_Total_Score_T_new, color = as.factor(GROUP))) + 
+  theme_classic() + geom_boxplot() #+ geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+### check outliers 
+```{r}
+ subj_level_all %>%
+  group_by(GROUP) %>%
+  summarize(mean_RCADS = mean(J.RCADS_Total_Score_T_new, na.rm =T), 
+            sd_RCADS = sd(J.RCADS_Total_Score_T_new, na.rm = T), 
+            outlier_RCADS = mean_RCADS + 3*sd_RCADS)
+
+subj_level_all <- subj_level_all %>%
+  mutate(outlier_RCADS = ifelse(GROUP == 0 & J.RCADS_Total_Score_T_new > 75.4, 1, 
+                                ifelse(GROUP == 1 & J.RCADS_Total_Score_T_new > 76.1, 1,0)), 
+         RCADS_Total_T = ifelse(outlier_RCADS !=1 , J.RCADS_Total_Score_T_new, NA))
+
+```
+
+```{r}
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = RCADS_Total_T, color = as.factor(GROUP))) + 
+  theme_classic() + geom_boxplot() #+ geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+
+### RCADS Total: no group differences, and no behavior differences
+```{r}
+
+symptom_mod1 <- lm(RCADS_Total_T ~ GROUP + prop_stay_hard_reward + prop_stay_easy_reward + 
+                     prop_stay_hard_setback + prop_stay_easy_setback + prop_hard_choices + 
+                     AGE + Sex + Reinforce_rate, 
+                   data = subj_level_all)
+summary(symptom_mod1)
+```
+
+
+ this is a random spurious finding!!! 
+```{r}
+ggplot(subj_level_all, aes(x = Reinforce_rate, y = J.RCADS_Anxiety_Total_raw_new)) + 
+  geom_point() + geom_smooth()
+```
+
+##  CBCL int instead
+```{r}
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = CBCL_4_INTERNPROB_T, color = as.factor(GROUP))) + 
+  theme_classic() + geom_boxplot() #+ geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+### CBCL int: sig group differences, but not behavior
+but does not correlate at all with task behavior!! 
+```{r}
+
+symptom_mod2 <- lm(CBCL_4_INTERNPROB_T ~ GROUP + prop_stay_hard_reward + prop_stay_easy_reward + 
+                     prop_stay_hard_setback + prop_stay_easy_setback + prop_hard_choices + 
+                     AGE + Sex + Reinforce_rate, 
+                   data = subj_level_all)
+summary(symptom_mod2)
+```
+
+
+### check CBCL ext instead
+```{r}
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = CBCL_4_EXTERNPROB_T, color = as.factor(GROUP))) + 
+  theme_classic() + geom_boxplot() #+ geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+## CBCL ext: sig group differences, and...
+but does not correlate at all with task behavior!! 
+```{r}
+
+symptom_mod3 <- lm(CBCL_4_EXTERNPROB_T ~ GROUP + prop_stay_hard_reward + prop_stay_easy_reward + 
+                     prop_stay_hard_setback + prop_stay_easy_setback + prop_hard_choices + 
+                     AGE + Sex + Reinforce_rate, 
+                   data = subj_level_all)
+summary(symptom_mod3)
+```
+
+### lose-stay after easy setback correlates with externalizing?? 
+this doesn't really make sense.
+the more you stay after an easy setback, the more externalizing behavior you have?
+```{r}
+plot(effect("prop_stay_easy_setback", symptom_mod3))
+
+```
+
+## RCADS MDD 
+```{r}
+
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = J.RCADS_MDD_T_new, color = as.factor(GROUP))) + 
+  theme_classic() + geom_violin() + geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+### RCADS MDD: group differences, no behavior effects
+```{r}
+
+symptom_mod4 <- lm(J.RCADS_MDD_T_new ~ GROUP + prop_stay_hard_reward + prop_stay_easy_reward + 
+                     prop_stay_hard_setback + prop_stay_easy_setback + prop_hard_choices + 
+                     AGE + Sex + Reinforce_rate, 
+                   data = subj_level_all)
+summary(symptom_mod4)
+
+CBCL_4_ANXDEPR_T
+```
+
+## CBCL MDD 
+```{r}
+
+ggplot(subj_level_all, aes(x = as.factor(GROUP), y = CBCL_4_ANXDEPR_T, color = as.factor(GROUP))) + 
+  theme_classic() + geom_violin() + geom_jitter(width = 0.05, alpha = 0.5) 
+
+```
+
+### CBCL MDD: no group differences, no behavior effects
+```{r}
+
+symptom_mod5 <- lm(CBCL_4_ANXDEPR_T ~ GROUP + prop_stay_hard_reward + prop_stay_easy_reward + 
+                     prop_stay_hard_setback + prop_stay_easy_setback + prop_hard_choices + 
+                     AGE + Sex + Reinforce_rate, 
+                   data = subj_level_all)
+summary(symptom_mod5)
+
+CBCL_4_ANXDEPR_T
+```

@@ -1,0 +1,212 @@
+---
+title: "Aim2, Hypothesis 3"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes 
+Dec 1 2019: updated with new MICM variables and using PC1_log instead of sqrt. \
+Note: coef plot is deceiving because 85% CI not 95% CI!
+
+
+
+```{r, include = F, warnings = F, echo=FALSE}
+source("../../../0_R_analysis_setup_file.R")
+```
+
+```{r}
+# load all data with PCA added!
+load("../1_PCA/data/all_pacct_effort_data_with_PCA.rda")
+```
+
+
+## Aim 2: ECA and internalizing problems, moderated by persistence measures 
+Identify individual-level associations between the neurobehavioral phenotype of persistence and resilience in ECA-exposed children. Hypothesis 3: Effort-based motivation will moderate the links between ECAs and internalizing problems. stronger frontal-striatal recruitment when making effort-based decisions
+
+
+# main effects of ECA on internalizing
+graph by group 
+```{r}
+
+ggplot(data = beh_ECA_wide, aes(x = GROUP_ECA, y = CBCL_4_INTERNPROB_T)) + 
+  geom_boxplot() + theme_classic()
+```
+
+```{r}
+ggplot(data = beh_ECA_wide, aes(x = PC1_log, y = CBCL_4_INTERNPROB_T)) + 
+  geom_point() + theme_classic() + geom_smooth(method = "lm")
+```
+
+## PC1
+```{r}
+mod2_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_log + AGE.c + SEX.c + prop_hard_choices.c, 
+                data = beh_ECA_wide)
+
+summary(mod2_CBCL)
+#coefplot(mod2_CBCL)
+```
+
+## Group 
+```{r}
+mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP_ECA + AGE.c + SEX.c, 
+                data = beh_ECA_wide)
+
+summary(mod1_CBCL)
+#coefplot(mod1_CBCL)
+```
+
+## when added to model together, PC1 is significant. 
+```{r}
+
+mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP_ECA + PC1_log + AGE.c + SEX.c, 
+                data = beh_ECA_wide)
+
+summary(mod1_CBCL)
+#coefplot(mod1_CBCL)
+```
+
+## PC1 x Age: SIG
+relationship is stronger in younger children than older children?
+```{r}
+
+mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~  PC1_log * AGE.c + SEX.c, 
+                data = beh_ECA_wide)
+
+summary(mod1_CBCL)
+```
+
+
+# Effort-based motivation 
+## Choice behavior 
+more hard-effort choices, will be associated with reduced internalizing symptoms within the ECA group. 
+
+```{r}
+mod1b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP_ECA * prop_hard_choices.c + AGE.c + SEX.c, 
+                data = beh_ECA_wide)
+
+summary(mod1b_CBCL)
+#coefplot(mod1b_CBCL)
+```
+
+```{r}
+mod2b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_log * prop_hard_choices.c +
+                  + AGE.c + SEX.c, 
+                data = beh_ECA_wide)
+
+summary(mod2b_CBCL)
+```
+
+
+
+## perceived effort (significantly different between groups)
+```{r}
+# make a mean perceived effort score
+beh_scan_ECA_wide <- beh_scan_ECA_wide %>%
+  mutate(mean_effort_perceived = (easy_effort_perceived + hard_effort_perceived)/2)
+
+```
+
+### perceived effort x group: trend
+```{r}
+mod_CBCL_effort <- lm(CBCL_4_INTERNPROB_T ~ mean_effort_perceived * GROUP_ECA + 
+                        AGE.c + SEX.c, data = beh_scan_ECA_wide)
+
+summary(mod_CBCL_effort)
+```
+
+### perceived effort x PC1: NS
+```{r}
+mod_CBCL_effort <- lm(CBCL_4_INTERNPROB_T ~ mean_effort_perceived * PC1_log + 
+                        AGE.c + SEX.c, data = beh_scan_ECA_wide)
+
+summary(mod_CBCL_effort)
+```
+
+# Neural FB reactivity 
+## remove outliers from neural measures
+```{r}
+load("tables/Feedback_betas_outlier_subjects.Rdata")
+reward_vmPFC_outliers <- FB_outlier_subjects %>% filter(contrast == "reward" & ROI == "vmPFC")
+reward_vmPFC_df <- beh_scan_ECA_wide %>% 
+  filter(!SUBJECTID  %in% reward_vmPFC_outliers$SUBJECTID)
+nrow(reward_vmPFC_df)
+
+setback_amygdala_outliers <- FB_outlier_subjects %>% filter(contrast == "setback" & ROI == "Amyg")
+setback_amygdala_df <- beh_scan_ECA_wide %>% 
+  filter(!SUBJECTID  %in% setback_amygdala_outliers$SUBJECTID)
+nrow(setback_amygdala_df)
+
+```
+
+
+## reward vmPFC
+### 1:  does reactivity to  reward (that relates to ECA) also relate to CBCL? 
+if you don't exclude the outliers, it is significant :( 
+```{r}
+mod1_vmPFC <- lm(CBCL_4_INTERNPROB_T ~ reward_vmPFC + AGE.c + SEX.c + 
+                   total_TRs_censored, 
+           data = reward_vmPFC_df)
+summary(mod1_vmPFC)
+
+#### 2:  add ECA? 
+mod1_vmPFC <- lm(CBCL_4_INTERNPROB_T ~ PC1_log + reward_vmPFC + AGE.c + SEX.c + 
+                   total_TRs_censored, 
+           data = reward_vmPFC_df)
+summary(mod1_vmPFC)
+
+
+#### 3. does reactivity moderate effect of ECA on internalizing? NS
+mod1_vmPFC <- lm(CBCL_4_INTERNPROB_T ~ PC1_log * reward_vmPFC + AGE.c + SEX.c, 
+           data = reward_vmPFC_df)
+summary(mod1_vmPFC)
+```
+
+
+showing outliers not included in model
+```{r}
+effect_df <- data.frame(effect("reward_vmPFC", mod1_vmPFC))
+
+ggplot(effect_df, aes(x = reward_vmPFC, y = fit)) + 
+  geom_line() + geom_ribbon(aes(ymax = upper, ymin = lower), alpha = 0.3)  + 
+  theme_classic()  + ylab("CBCL Internalizing") + 
+  geom_point(data = beh_scan_ECA_wide, aes(x = reward_vmPFC, y = CBCL_4_INTERNPROB_T), 
+             alpha = 0.5)
+```
+
+## Amygdala setback reactivity (which is significantly related to PC1)
+### moderation
+```{r}
+mod1_amyg <- lm(CBCL_4_INTERNPROB_T ~ setback_Amyg + AGE.c + SEX.c + total_TRs_censored, 
+           data = setback_amygdala_df)
+summary(mod1_amyg)
+
+mod1_amyg <- lm(CBCL_4_INTERNPROB_T ~ setback_Amyg + PC1_log +  AGE.c + SEX.c + total_TRs_censored, 
+           data = setback_amygdala_df)
+summary(mod1_amyg)
+
+mod1_amyg <- lm(CBCL_4_INTERNPROB_T ~ setback_Amyg * PC1_log +  AGE.c + SEX.c + total_TRs_censored, 
+           data = setback_amygdala_df)
+summary(mod1_amyg)
+
+```
+
+
+showing outliers not included in model
+```{r}
+effect_df <- data.frame(effect("setback_Amyg", mod1_amyg))
+
+ggplot(effect_df, aes(x =setback_Amyg, y = fit)) + 
+  geom_line() + geom_ribbon(aes(ymax = upper, ymin = lower), alpha = 0.3)  + 
+  theme_classic()  + ylab("CBCL Internalizing") + 
+  geom_point(data = beh_scan_ECA_wide, aes(x = setback_Amyg, y = CBCL_4_INTERNPROB_T), 
+             alpha = 0.5)
+```

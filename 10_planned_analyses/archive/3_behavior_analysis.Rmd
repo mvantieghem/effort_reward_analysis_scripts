@@ -1,0 +1,488 @@
+---
+title: "Persistence behavior analysis"
+author: "Michelle Vantieghem"
+date: "April 5, 2019"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{r}
+library(tidyverse)
+library(lmerTest)
+library(ggplot2)
+library(effects)
+my_colors <-  scale_color_manual(values=c("#0006CC", "#CC0000", "black", "black"))
+my_colors2 <- scale_fill_manual(values=c("#0006CC", "#CC0000","black", "black"))
+
+
+
+######### lmer Version #######
+condslope.lmer.slopes <- function(x, z, c, y){
+#  condslope.lmer( "age1","GROUP", 0, Amyg_piecewise_orig)
+  # x = name of x variable
+  # z = name of z variable (moderator)
+  # c = conditional value of z
+  # y = reg object
+  # lmer model must be in this order x + z + x*z
+# updated slightly by MVT on March 4, 2019 
+# bcause tidy doesn't work.
+
+out <- summary(y)
+xz <- paste(x, z, sep=":")
+#zx <- paste(z, x, sep = ":")
+w0.intercept <- fixef(y)["(Intercept)"] + fixef(y)[z]*c
+w1.slope <- fixef(y)[x] + fixef(y)[xz]*c 
+#y.cond <- w0.intercept + w1.slope*xvalue
+require(broom)
+modtidy <- data.frame(summary(y)$coef)
+modtidy$rownames <- rownames(modtidy)
+modtidy$df <- 100
+coef2.var <- subset(modtidy, rownames == x)$Std..Error^2
+coef4.var <- subset(modtidy, rownames == xz)$Std..Error^2
+out.vcov <- vcov(y)
+cond.se <- sqrt(coef2.var + (c) * (c) * coef4.var + 2 * (c) * out.vcov[x, xz])
+t.val <- w1.slope/cond.se
+p.val <- 2*(1-pt(abs(t.val), subset(modtidy, rownames == x)$df, lower.tail=T))
+lower95 <- w1.slope-qt(0.975, subset(modtidy, rownames == x)$df)*cond.se
+upper95 <- w1.slope+qt(0.975, subset(modtidy, rownames == x)$df)*cond.se
+# z.out <- z.test(w1.slope, sigma.x= cond.se)
+return(list(w0.intercept=round(w0.intercept, digits = 2), w1.slope=round(w1.slope, digits = 2),
+            df = subset(modtidy, rownames == x)$df[1],
+            t.val = round(t.val, digits = 2), p.val = round(p.val, digits = 3), 
+            lower95 = round(lower95, digits = 2), 
+            upper95 = round(upper95, digits = 2)))
+}
+
+
+```
+
+
+# 1. get data
+## 1. load in cleaned behavior data.
+```{r}
+
+compiled.data <- read.csv("../behavior/behavioral_data/3_effort_task_data/compiled_effort_scan_version_filtered_usable_2019-04-02.csv")
+#summary(compiled.data$Run_number)
+```
+
+## 2. load in compiled demographics and scan info 
+```{r}
+#load("progress_report_and_demographics2019-04-10.Rdata")
+
+#name of this file changed 
+load("progress_report_QC/data_QC_and_demographics2019-04-11.Rdata")
+demo.data <- df_scans
+```
+
+## 3. load in long-formatted data per subject (trialwise)
+```{r}
+load(paste0("../behavior/behavioral_data/compiled_long_format_usable_2019-04-08.Rdata"))
+data.long$SUBJECTID <- data.long$SUB
+#head(data.long$SUBJECTID)
+
+```
+
+## merge 
+```{r}
+data.long.demo <- merge(data.long, demo.data, by = "SUBJECTID")
+
+df_use <- merge(data.long.demo, compiled.data, by =  c("SUBJECTID", "Run_number"))
+
+```
+
+## check age - fixed!
+```{r}
+summary(df_use$AGE)
+
+```
+
+## check sex - fixed!
+```{r}
+summary(df_use$SEX)
+```
+
+# Hypothesis 1
+
+## set up data:
+filter out missed trials, too slow, and extreme reinforce rates.
+```{r}
+## sort the dataframe by trial
+df_use$Run_Number.n <- ifelse(df_use$Run_number == "RUN1", 1, 2)
+df_use <- df_use[order(df_use$SUBJECTID, df_use$Run_Number.n, df_use$Trial_Number),]
+
+df_use_no_miss <- df_use %>%
+   filter(Reinforce_rate > .3 & Reinforce_rate < .7 & 
+          # exclude people with too many missing
+          Prop_tooslow < .5 & N_choices_resp > 15 & 
+          # exclude missed choices on the current trial, because stay/shift is meaningless for them. 
+          Effort_Choice != "Miss") %>%
+          mutate(GROUP = as.factor(ifelse(GROUP.final == 0, 0, 1)), 
+          Effort_Choice.n = ifelse(Effort_Choice == "Easy", 0, 1)) %>%
+   mutate(Trial_Number = as.numeric(as.character(Trial_Number)))
+
+# make trial 1-42 instead of 2 blocks of 21 
+df_use_no_miss$Trial_Number <- ifelse(df_use_no_miss$Run_number == "RUN1", df_use_no_miss$Trial_Number, ifelse(df_use_no_miss$Run_number == "RUN2", df_use_no_miss$Trial_Number + 21, NA))
+```
+
+
+# Descriptives check 
+```{r}
+summary(df_use_no_miss$Effort_Choice.n)
+
+```
+
+## mod1. choice behavior in comps only 
+main effect of trial number, hard effort decreases over time.
+```{r}
+choice_mod1 <- glmer(Effort_Choice.n ~ 
+                       Reinforce_rate + AGE + SEX + Trial_Number + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_no_miss, GROUP == 0),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod1)
+```
+
+## age x trialN interaction? no.
+```{r}
+choice_mod1b <- glmer(Effort_Choice.n ~ 
+                       Reinforce_rate + AGE * Trial_Number + SEX + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_no_miss, GROUP == 0),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod1b)
+```
+
+```{r}
+plot(effect("Trial_Number", choice_mod1))
+
+```
+
+## mod2:. choice behavior between groups (ECA vs. COMP)
+main effect of trial number, hard-effort choices decrease over time.
+```{r}
+
+choice_mod2 <- glmer(Effort_Choice.n ~ 
+                      GROUP +  Reinforce_rate + AGE + SEX + Trial_Number + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod2)
+```
+
+### age x trialN in all subs?
+```{r}
+
+choice_mod2b <- glmer(Effort_Choice.n ~ 
+                      GROUP +  Reinforce_rate + Trial_Number*AGE + SEX + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod2b)
+```
+
+older kids are more persistent!! 
+younger kids decrease in effort over time. 
+```{r}
+plot(effect("Trial_Number:AGE", choice_mod2b), multiline = T, rug = F)
+
+```
+
+### Age x Trial N x GROUP? No
+also model is having trouble converging! 
+
+```{r}
+choice_mod2c <- glmer(Effort_Choice.n ~ 
+                      GROUP*AGE*Trial_Number + Reinforce_rate + SEX + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_no_miss, GROUP.final < 3),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod2c)
+```
+
+
+## mod3: choice behavior by subtype (PI vs. DA vs. COMP)
+main effect of trial number! 
+```{r}
+choice_mod3 <- glmer(Effort_Choice.n ~ 
+                      GROUP.final +  Reinforce_rate + AGE + SEX + Trial_Number + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_no_miss, GROUP.final < 3),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod3)
+```
+
+# WSLS
+## prep data 
+using the entire dataset, including misses...
+```{r}
+# make a copy of the dataset, remove all of the first trials, and mark them as 100 to keep out of place.
+df_copy2 <- df_use %>%
+  mutate(Trial_Number = Trial_Number + 1) %>%
+  select(SUBJECTID, Run_number, Trial_Number, Effort_Choice, Reward_received) %>%
+  rename(Effort_Choice_prior = Effort_Choice, 
+         Reward_received_prior = Reward_received)
+
+# now re-sort the data, so that all trials are shifted up 1 place. 
+df_copy2 <- df_copy2[order(df_copy2$SUBJECTID, df_copy2$Run_number, df_copy2$Trial_Number),]
+
+#head(df_copy2)
+
+# now merge this new thing with orig data, by sub, run, and Trial_Number! 
+df_use2 <- merge(df_use, df_copy2, by = c("SUBJECTID", "Run_number", "Trial_Number"), all = T) %>%
+  filter(!is.na(Effort_Choice ))
+
+check <- df_use2 %>%
+  select(Trial_Number, Effort_Choice, Effort_Choice_prior)
+#check
+```
+
+## calculate stay-shift variables, 1 = stay, 0 = shift
+
+```{r}
+df_use3 <- df_use2 %>%
+  # don't include missed choices. 
+  mutate(stay_shift = ifelse(Effort_Choice == Effort_Choice_prior, 1, 0),
+         reward_received_prior_inclturtle = ifelse(Reward_received_prior == 0 | is.na(Reward_received_prior), 0, 1))
+
+summary(as.factor(df_use3$Effort_Choice_prior))
+summary(as.factor(df_use3$Reward_received_prior))
+summary(as.factor(df_use3$reward_received_prior_inclturtle))
+```
+
+## filter data for analysis: exclude: 
+runs extreme reinforcement rates
+runs with low response for choices, or too many turtles
+runs with 0 for any of the cells in the feedback x effort interaction
+trials where the current choice was missed.
+```{r}
+df_use_WSLS <- df_use3 %>%
+  # exclude extreme reinforcement rates. 
+ filter(Reinforce_rate > .3 & Reinforce_rate < .7 & 
+          # exclude people with too many missing
+          Prop_tooslow < .5 & N_choices_resp > 15 & 
+          # exclude pppl with zero of each 4 cells for interaction
+          N_easy_setback > 0 & N_hard_setback > 0 &
+          N_hard_reward > 0 & N_easy_reward > 0 &
+          # exclude missed choices on the current trial, and prior trial
+          # because stay/shift is meaningless for them. 
+          Effort_Choice_prior != "Miss" &
+          Effort_Choice != "Miss") %>%
+  mutate(Reward_received_prior = as.factor(as.character(Reward_received_prior)),
+         reward_received_prior_inclturtle = as.factor(as.character(reward_received_prior_inclturtle)), 
+         GROUP.final = as.factor(as.character(GROUP.final)), 
+          GROUP = as.factor(ifelse(GROUP.final == 0, 0, 1)),
+         Effort_Choice_prior = as.factor(ifelse(Effort_Choice_prior == "Easy", 0,
+                                                   ifelse(Effort_Choice_prior == "Hard", 1, NA))),
+         Effort_Choice.n = as.numeric(ifelse(Effort_Choice == "Easy", 0, 
+                                             ifelse(Effort_Choice == "Hard", 1, NA))))
+  
+nrow(df_use_WSLS)
+
+summary(df_use_WSLS$Reward_received_prior)
+summary(df_use_WSLS$reward_received_prior_inclturtle)
+```
+
+# Hypothesis 2: WSLS behavior (excluding turtle trials)
+## mod 1: COMPS
+
+```{r}
+WSLS_mod1 <- glmer(stay_shift ~ Reward_received_prior * Effort_Choice_prior + 
+                      Reinforce_rate + AGE + SEX + Trial_Number +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP == 0), 
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod1)
+```
+
+### main effect of effort choice prior.
+more likely to STAY than shift after a hard trial.
+so, more likely to choose hard after a hard choice. responses aren't random! 
+```{r}
+plot(effect("Effort_Choice_prior", WSLS_mod1))
+```
+
+### remove interaction
+
+```{r}
+WSLS_mod1b <- glmer(stay_shift ~ Reward_received_prior + Effort_Choice_prior + 
+                      Reinforce_rate + AGE + SEX + Trial_Number +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP == 0), 
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod1b)
+```
+
+###  main effect of prior feedback
+more likely to stay after setback than reward! also makes sense
+```{r}
+plot(effect("Reward_received_prior", WSLS_mod1b))
+
+```
+
+
+## mod 2: GROUP (ECA vs. COMP) 
+does group interact with effort & prior fB? 
+```{r}
+
+WSLS_mod2 <- glmer(stay_shift ~ GROUP * Reward_received_prior * Effort_Choice_prior + 
+                      Reinforce_rate + AGE + SEX + Trial_Number +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_WSLS,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod2)
+
+```
+
+
+### main effect of feedback...
+you're more likely to STAY after a SETBACK! 
+```{r}
+plot(effect("Reward_received_prior", WSLS_mod1))
+```
+
+### main effect of effort
+you're more likely to stay following a hard task
+```{r}
+plot(effect("Effort_Choice_prior", WSLS_mod1))
+```
+
+
+### no sig effect of reinforcement rate!!
+```{r}
+
+plot(effect("Reinforce_rate", WSLS_mod1))
+
+```
+
+### main effect of AGE
+kids actually get less persistent with older age! 
+developing smarter decision-making strategies? 
+```{r}
+
+plot(effect("AGE", WSLS_mod2))
+```
+
+
+### post-hoc of 3 way interaction.
+using katherine's function for this.
+```{r}
+# reference of reward received = setback
+# reference group for GROUP = COMP
+# reference of effort choice = Easy
+group_diff_easy_setback <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP1", "Effort_Choice_prior1", 0, WSLS_mod2)) # this reflects setbacks because Reward received 0= reference.
+
+group_diff_hard_setback <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP1", "Effort_Choice_prior1", 1, WSLS_mod2))# this reflects setbacks because Reward received 0= reference.
+
+# make a variable with reward as the reference group! 
+df_use_WSLS$Reward_received_prior_RewardRef <- as.factor(ifelse(df_use_WSLS$Reward_received_prior == 0, 1, 0))
+
+WSLS_mod2_RewardRef <- glmer(stay_shift ~ GROUP * Reward_received_prior_RewardRef * Effort_Choice_prior + 
+                      Reinforce_rate + AGE + SEX + Trial_Number +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_WSLS,
+                    control = glmerControl(optimizer = "bobyqa"))
+
+# reference of effort choice = Easy
+group_diff_easy_reward <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP1", "Effort_Choice_prior1", 0, WSLS_mod2_RewardRef)) # this reflects setbacks because Reward received 0= reference.
+
+group_diff_hard_reward <- data.frame(GROUP = "PIvsCOMP", condslope.lmer.slopes("GROUP1", "Effort_Choice_prior1", 1, WSLS_mod2_RewardRef))# this reflects setbacks because Reward received
+
+posthoc_table <- rbind(group_diff_easy_reward, group_diff_hard_reward, group_diff_easy_setback, group_diff_hard_setback)
+
+posthoc_table <- posthoc_table %>%
+  dplyr::select(-w0.intercept) %>%
+  dplyr::select(GROUP, w1.slope, t.val, p.val, lower95, upper95)
+
+names(posthoc_table) <- c( "Contrast", "Difference", "t value", "p value", "lower 95% CI", "upper 95 CI%")
+posthoc_table$Contrast <- c("ECAvsCOMP easy reward", "ECAvsCOMP  hard reward", "ECAvsCOMP easy setback", "ECAvsCOMP hard setback")
+posthoc_table
+save(posthoc_table, file = "behavior_model_output/Hypothesis2_group_posthoc.Rdata")
+```
+
+### plot this in ggplot!
+note: individual data points represent subject-specific averages! 
+```{r}
+# calculate subject-specific proportions of stay vs. shift, for each of 4 conditions.
+WSLS_subj_summary <- df_use_WSLS %>%
+        mutate(Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward")) %>%
+  group_by(SUBJECTID, Effort_Choice_prior, Reward_received_prior) %>%
+  summarize(stay_shift = mean(stay_shift, na.rm = T), 
+            GROUP = mean(as.numeric(as.character(GROUP)), na.rm = T)) %>%
+     mutate(GROUP = ifelse(GROUP == 0, "COMP", "ECA"))
+
+
+WSLS_effect <- as.data.frame(effect("GROUP:Reward_received_prior:Effort_Choice_prior", WSLS_mod2, confint=TRUE)) %>%
+  mutate(GROUP = ifelse(GROUP == 0, "COMP", "ECA"), 
+         Effort_Choice_prior = ifelse(Effort_Choice_prior == 0, "Easy", "Hard"), 
+         Reward_received_prior= ifelse(Reward_received_prior == 0, "Setback", "Reward"))
+
+WSLS_plot <- ggplot(WSLS_effect, aes(x = Effort_Choice_prior, y = fit, fill = GROUP)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_dotplot(data = WSLS_subj_summary,position = "dodge",
+       aes(x = Effort_Choice_prior, y = stay_shift, color = GROUP), 
+       alpha = 0.3, stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   facet_grid (~Reward_received_prior) + theme(legend.position = "none") +
+   theme_classic() + my_colors + my_colors2 + ylab ("Stay = 1 , Shift = 0") + xlab ("Effort Choice")
+
+#pdf("figures/Hypothesis2_WSLS_groupxeffortxfeedback.pdf")
+WSLS_plot
+#dev.off()
+```
+
+### summary of interaction effects
+when ECA receive easy setback, they choose easy again.
+when COMPS receive easy setback, they do more adaptive behavior to switch to hard.
+when ECA receive hard reward, they choose hard again.
+when COMPS receive hard reward, might still switch to easy.
+
+## mod 3: GROUP subtypes (PI vs. DA vs. COMP) 
+no effects when you separate DAs and PIs.
+```{r}
+df_use_WSLS$GROUP.final <- as.numeric(as.character(df_use_WSLS$GROUP.final))
+WSLS_mod3 <- glmer(stay_shift ~ Reward_received_prior * Effort_Choice_prior * GROUP.final + 
+                      Reinforce_rate + AGE + SEX + Trial_Number +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP.final < 3),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod3)
+
+```
+
+### just controlling for group, in all subjects.
+```{r}
+WSLS_mod3b <- glmer(stay_shift ~ Reward_received_prior * Effort_Choice_prior + GROUP.final + 
+                      Reinforce_rate + AGE + SEX + Trial_Number +
+                      ( 1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_WSLS, GROUP.final < 3),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(WSLS_mod3b)
+```
+
+### effort x reward interaction
+everyoen is more motivated for the hard task - persist regardless of prior feedback! 
+```{r}
+plot(effect("Reward_received_prior:Effort_Choice_prior", WSLS_mod3b))
+
+```
+

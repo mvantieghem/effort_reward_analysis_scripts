@@ -1,0 +1,163 @@
+---
+author: "Michelle.VanTieghem"
+date: "Dec 1, 2019"
+title: "prep data for PCA/FA"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+# Notes 
+redoing on Dec 1 with updated MICM variables. \
+updating on Dec 5 to add more iterations for stable parallel analysis.
+
+```{r setup, include=FALSE, echo = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(viridis)
+library(readxl)
+library(REdaS) # for diagnostic data checks before FA
+library(psych)# need for factor analysis
+library(GPArotation) # need for factor analysis
+library(PCAmixdata)
+
+```
+
+## load cleaned data
+```{r}
+load("data/pacct_all_cleaned_ELV.Rdata")
+nrow(pacct_cleaned)
+
+pacct_cleaned <- pacct_cleaned %>%
+  mutate(SUBJECTID = as.factor(substr(IDENT_SUBID, 1, 5)))
+
+```
+
+## cleaned behavioral effort data 
+```{r}
+## use behavioral data, so calculating on as many subs as possible.
+load("../../../9_combine_brain_beh_data/cleaned_data/COMP_ECA/all_pacct_effort_data.Rda")
+effort_sublist <- beh_ECA_wide$SUBJECTID
+length(effort_sublist)
+
+elv_sublist <- pacct_cleaned$SUBJECTID
+
+pacct_effort <-  pacct_cleaned %>%
+  filter(SUBJECTID %in% effort_sublist)
+nrow(pacct_effort) 
+
+```
+
+
+## Check for how many subs don't have complete cases.
+```{r}
+# remove subs without full cases.
+pacct_effort_w_labels <- pacct_effort  %>%  
+  dplyr::filter(., complete.cases(.))
+nrow(pacct_effort_w_labels) 
+
+# how many incomplete cases?
+N_incomplete_cases <- nrow(pacct_effort) - nrow(pacct_effort_w_labels)
+N_incomplete_cases
+
+  # make a key for subject, by row number...for matching later.
+pacct_effort_w_labels <- pacct_effort_w_labels %>%
+  mutate(subject = as.numeric(rownames(pacct_effort_w_labels)))
+
+# KEEP THIS SUBLIST TO MATCH WITH PCA RESULTS LATER!
+save(pacct_effort_w_labels, file = "data/pacct_effort_w_labels.Rdata")
+
+```
+
+
+## Remove labels 
+```{r}
+pacctNoLabels <- pacct_effort %>%
+  select(-SUBJECTID, -IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>%
+  dplyr::filter(., complete.cases(.))
+
+nrow(pacctNoLabels)
+```
+
+
+
+## Test assumptions 
+Bartlett’s test of sphericity checks whether or not the observed variables 
+intercorrelate at all using the observed correlation matrix against the 
+identity matrix. If the test found statistically insignificant, 
+you should not employ a factor analysis.
+```{r}
+# test is significant! 
+bart_spher(pacctNoLabels)
+```
+
+Kaiser-Meyer-Olkin (KMO) Test measures the suitability of data for factor analysis. 
+It determines the adequacy for each observed variable and for the complete model. 
+KMO estimates the proportion of variance among all the observed variable. 
+Lower proportion is more suitable for factor analysis. KMO values range between 0 and 1. 
+Value of KMO less than 0.6 is considered inadequate.
+
+```{r}
+# results here for this sample are different than the entire PACCT sample! 
+
+KMO_pacct <- data.frame(KMO(pacctNoLabels)$MSAi) %>%
+  mutate(variable = rownames(data.frame(KMO(pacctNoLabels)$MSAi))) %>%
+  rename(KMO_value = KMO.pacctNoLabels..MSAi)
+
+hist(KMO_pacct$KMO_value)
+vars_omit <- KMO_pacct %>%
+  filter(KMO_value < .6) 
+vars_omit 
+
+```
+
+## remove these variables
+```{r}
+pacctNoLabelsCleaned <- data.frame(pacctNoLabels) %>% 
+  select(-c(vars_omit$variable))
+```
+
+
+## standardize, convert to matrix, and save data
+```{r}
+
+scale <- function(variable){
+  (variable - mean(variable))/sd(variable)
+}
+
+pacctNoLabelsCleaned <- pacctNoLabelsCleaned %>%
+  mutate_all(scale) 
+
+save(pacctNoLabelsCleaned, file = "data/cleaned_ELV_for_dim_reduction.Rdata")
+
+```
+
+## parallel analysis 
+fa.parallel The parallel factors technique compares the observed eigen values of a corelation matrix with those from random data.
+```{r}
+# make a correlation matrix.
+pacct_cor <- cor(pacctNoLabelsCleaned) 
+
+# iterations increased to get a more stable estimate! 
+par_analysis <- fa.parallel(pacct_cor, n.obs = nrow(pacctNoLabelsCleaned), n.iter = 1000, error.bars = TRUE)
+
+par_analysis$nfact
+#Number of factors with eigen values > eigen values of random data
+
+par_analysis$ncomp
+#Number of components with eigen values > eigen values of random data
+
+save(par_analysis, file = "output/parallel_analysis_results.Rdata")
+```
+
+
+Parallel analysis suggests that the number of factors =  `r par_analysis$nfact`  and the number of components = `r par_analysis$ncomp` ... results are differrernt than non-comp PCA, which only needs 2 PCs
+
+
+
+

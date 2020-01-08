@@ -1,0 +1,226 @@
+---
+title: "cleaning and recoding and feature selection"
+author: "Michelle VanTieghem"
+date: "October 29, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+# notes 
+originally done in October 29, 2019  \
+Re-doing on Dec 1, 2019 with updated MICM_DV variables 
+
+```{r setup, message = F, echo = F}
+source("../../../0_R_analysis_setup_file.R")
+```
+
+# Get Raw data 
+## Notes:
+PULLING RAW DATA FROM MASTER  & NEW TESI CODED SHEET \
+copied from danlab server on 10/29 \
+if you don't have server access this won't work! 
+
+## get variables from master.
+```{r}
+pacct_master <- read_excel("../../../../subj_demo/masters/MASTER_20191118_updated_MICM.xlsx") 
+
+TESI_vars <- names(pacct_master)[grepl("TESI", names(pacct_master)) & grepl("CG", names(pacct_master)) 
+                    & !grepl("NCG", names(pacct_master)) & !grepl("EARLY", names(pacct_master)) 
+                    & !grepl("LATE", names(pacct_master)) & !grepl("ADV", names(pacct_master))]
+
+pacct <- pacct_master %>%
+        select(IDENT_SUBID, GROUP, DEM_3_GENDER_CHILD,
+         MICM_LOS, MICM_FTP, MICM_EMON, MICM_DV, MICM_EMOA_WO_DV, MICM_PHYSA,MICM_SEXA,
+         KSADS_PTSD_J, KSADS_PTSD_K, KSADS_PTSD_L, CGH_SUM_SWITCH, TESI_vars)
+
+```
+
+# cleaning 
+## Add better variable names for TESI and KSADS! 
+
+```{r}
+# get data dictionary with better labels for each variable name
+dictionary <- readxl::read_excel('../../../../../PACCT-CMI-Hackathon/rawData/variableLabels/PACCT_DATA_DICTIONARY_10.25.19.xlsx') %>%
+  select(Variable_Name, Variable_Label) %>%
+  filter(Variable_Name %in% names(pacct)[grepl("TESI", names(pacct))])
+
+# replacing numbered TESI variable names with better names from data dictionary
+TESI_pacct_names <- names(pacct)[grepl("TESI", names(pacct))] 
+
+# 2 of these appeared in the November 2019 version ofo the master. not in data dictionary.
+not_including <- TESI_pacct_names[! TESI_pacct_names %in% dictionary$Variable_Name]
+
+# get rid of them for now. 
+pacct <- pacct %>%
+  select(-not_including)
+
+# have a systematic way to change variables, make sure matching up correctly.
+for (variable in TESI_pacct_names){
+  if (variable %in% dictionary$Variable_Name){
+    # save the matching label
+    new_label <- dictionary %>%
+      filter(Variable_Name == variable) %>%
+      select(Variable_Label) %>%
+      as.character()
+    # change the column name to the new label in the master.
+    names(pacct)[names(pacct) == variable] <- new_label 
+  }
+}
+
+# update labels for KSADS 
+names(pacct)[grepl("KSADS_PTSD_J", names(pacct))] <- "KSADS_PTSD_DV" #KSADS_PTSD_J	Witness to Domestic Violence \
+names(pacct)[grepl("KSADS_PTSD_K", names(pacct))] <- "KSADS_PTSD_PA" #KSADS_PTSD_K	Physical Abuse \
+names(pacct)[grepl("KSADS_PTSD_L", names(pacct))] <- "KSADS_PTSD_SA" #KSADS_PTSD_L	Sexual Abuse \
+
+```
+
+## Recoding variables 
+KSADS: original coding: 0 = unknown, 1 = no diagnosis , 2 = yes diagnosis \
+changed to: 0 = not exposed, 1 = exposed \
+TESI_family_mental_illness: change 0.25 to 0 
+```{r table for KSADS}
+pacct_cleaned <- pacct %>%
+  # recoding the variables so that 0 = no diagnosis and 1 = diagnosis 
+  mutate(KSADS_PTSD_DV = ifelse(KSADS_PTSD_DV  == 0, NA, 
+                               ifelse (KSADS_PTSD_DV  == 1, 0, 
+                               ifelse(KSADS_PTSD_DV  == 2, 1, NA))),
+  KSADS_PTSD_PA = ifelse(KSADS_PTSD_PA == 0, NA, 
+                               ifelse (KSADS_PTSD_PA == 1, 0, 
+                               ifelse(KSADS_PTSD_PA == 2, 1, NA))),
+  KSADS_PTSD_SA = ifelse(KSADS_PTSD_SA == 0, NA, 
+                               ifelse (KSADS_PTSD_SA == 1, 0, 
+                               ifelse(KSADS_PTSD_SA == 2, 1, NA))), 
+  TESI_MENTAL_ILLNESS_CG= ifelse(TESI_MENTAL_ILLNESS_CG == 0.25, 0, TESI_MENTAL_ILLNESS_CG))
+
+```
+
+# Feature selection
+## check variable colinearity 
+
+```{r, echo = F}
+
+# note: at this point we are not yet filtering for missing cases
+# so there are NAs in the data!
+
+var_cor <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  as.matrix() %>% # convert to matrix
+  rcorr() # calculate correlations
+
+
+# visualize correlations
+corrplot(var_cor$r, method = "color", type = "lower")
+
+# save
+pdf("figures/PCA/Caregiving_adversity_variables_corrplot.pdf")
+corrplot(var_cor$r, method = "color", type = "lower")
+dev.off()
+
+```
+
+## check specific variable correlations
+
+### physical abuse
+```{r, echo = F}
+ PA_cor <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  select(contains("PHYS"), contains("PA"), -TESI_SEPARATION_CG) %>%
+  as.matrix() %>% # convert to matrix
+  rcorr()  #calculate correlations 
+
+PA_cor$r
+
+```
+
+
+### sexual abuse 
+MICM and KSADS highly correlated, TESI not as much
+```{r, echo = F}
+SA_cor <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  select(contains("_SA"), contains("SEXA")) %>%
+  as.matrix() %>% # convert to matrix
+  rcorr()  #calculate correlations 
+
+SA_cor$r
+```
+
+###  domestic violence
+MICM and KSADS highly correlated, TESI not as much.
+```{r, echo = F}
+DV_cor <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  select(contains("DV"), -contains("WO")) %>%
+  as.matrix() %>% # convert to matrix
+  rcorr()  #calculate correlations 
+
+DV_cor$r
+```
+
+## emotional abuse 
+REALLY not correlated between TESI and MICM 
+```{r, echo = F}
+EMOA_cor <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  select(contains("EMOA")) %>%
+  as.matrix() %>% # convert to matrix
+  rcorr()  #calculate correlations 
+
+EMOA_cor$r
+```
+
+
+## neglect 
+looked at this subset of variables because based on corrplot, they looked correlated.
+```{r, echo = F}
+
+Neg_cor <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  select(contains("LOS"), contains("NEGLECT"), contains("FTP"), CGH_SUM_SWITCH) %>%
+  as.matrix() %>% # convert to matrix
+  rcorr()  #calculate correlations 
+
+Neg_cor$r
+```
+
+## updating variables 
+group decided to remove MICM DV because KSADS DV is a better measure \
+KSADS PTSD PA is less-specific to caregiving, so remove \
+TESI_SEXABUSE WITNESS combined with SEXABUSE because infrequent \
+TESI_FAMDV_THREAT combined with TESI_FAM_DV because infrequent \
+```{r}
+# find concerningly high correlations
+any(var_cor$r > 0.8 & var_cor$r < 1.0)
+
+# make changes to the data 
+pacct_cleaned <- pacct_cleaned %>%
+  select( -MICM_DV, -KSADS_PTSD_PA)  %>% 
+  mutate(TESI_SEXABUSE_CG = ifelse(TESI_SEXABUSE_CG == 1, 1, 
+                                ifelse(TESI_SEXABUSE_WITNESS_CG == 1, 1, 0)), 
+         TESI_FAMDV_CG = ifelse(TESI_FAMDV_CG == 1, 1, 
+                                ifelse(TESI_FAMDVTHREAT_CG == 1, 1, 0))) %>%
+  select(-TESI_SEXABUSE_WITNESS_CG, -TESI_FAMDVTHREAT_CG)
+
+# set up matrix for correlations
+var_cor2 <- pacct_cleaned %>%
+  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% 
+  as.matrix() %>% # convert to matrix
+  rcorr() # calculate correlations
+
+# removed the too highly correlated variables! 
+which(var_cor2$r > 0.8 & var_cor2$r < 1.0)
+
+```
+
+# finish cleaning data:
+SAVE DATA.
+```{r}
+
+# save
+save(pacct_cleaned, file = "data/pacct_all_cleaned_ELV.Rdata")
+```

@@ -1,0 +1,117 @@
+---
+title: "Aim 2 Hypothesis 4 - reward and beahvior"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+## with scanning data 
+from data_cleaning_for_analysis 
+```{r}
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide_WSLS.Rdata")
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long_WSLS.Rdata")
+
+```
+### remove outliers from this data first! 
+removing entire subjects from data frame
+```{r}
+
+beh_scan_comp_wide <- beh_scan_comp_wide %>%
+  filter(! SUBJECTID %in% choice_outlier_subjects$SUBJECTID) %>%
+  filter(! SUBJECTID %in% FB_outlier_subjects$SUBJECTID)
+nrow(beh_scan_comp_wide)
+```
+
+
+## Hypothesis 4: Greater striatal response to rewards will be associated with a greater proportion of hard-effort choices.
+Do between subject differences in reactivity to rewards relate to proportion of hard- effort choices? 
+
+### Model 4 wide version
+#### VS: NS
+```{r}
+mod4_VS <- lm(prop_hard_choices ~ reward_setback_VS + # + IQ + Fam_inc_needs +
+            AGE + SEX + total_TRs_censored + Reinforce_rate,
+           data = beh_scan_comp_wide)
+summary(mod4_VS)
+
+```
+
+
+### VS reward vs. setback all trials, long version brms: NS
+loaded from COMP_brms_preregistration_analyses2.R 
+
+```{r}
+### Reward vs. setbacks all trials
+load("brms_models/preregistration_model_results/mod4_VS_long_brms.Rdata")
+print(mod4_VS_long_brms, digits = 4)
+```
+
+### VS rewards vs. hard setbacks - hard only
+```{r}
+load("brms_models/preregistration_model_results/mod4_hard_VS_long_brms.Rdata")
+print(mod4_hard_VS_long_brms, digits = 4)
+```
+
+
+### VS hard rewards only 
+```{r}
+load("brms_models/preregistration_model_results/mod4_hard_reward_VS_long_brms.Rdata")
+print(mod4_hard_reward_VS_long_brms, digits = 4)
+```
+
+
+### VS hard setbacks only
+```{r}
+load("brms_models/preregistration_model_results/mod4_hard_setback_VS_long_brms.Rdata")
+print(mod4_hard_setback_VS_long_brms, digits = 4)
+```
+
+### Follow-ups with other regions: NS
+vmPFC: NS
+```{r}
+load("brms_models/preregistration_model_results/mod4_vmPFC_long_brms.Rdata")
+print(mod4_vmPFC_long_brms, digits = 4)
+```
+
+mPFC: NS
+```{r}
+load("brms_models/preregistration_model_results/mod4_mPFC_long_brms.Rdata")
+print(mod4_mPFC_long_brms, digits = 4)
+```
+
+Amyg: NS
+```{r}
+load("brms_models/preregistration_model_results/mod4_amyg_long_brms.Rdata")
+print(mod4_Amyg_long_brms, digits = 4)
+```
+

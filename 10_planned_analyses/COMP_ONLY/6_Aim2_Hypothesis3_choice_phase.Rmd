@@ -1,0 +1,129 @@
+---
+title: "Aim2 Hypothesis 3 choice phase"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+## with scanning data 
+from data_cleaning_for_analysis 
+```{r}
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide_WSLS.Rdata")
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long_WSLS.Rdata")
+
+```
+
+# Aim 2: Brain-behavior relationships
+We will examine how neural circuitry relates to behavior in the task at the between- subject level. \
+Aim 2a: First, we will examine whether children’s effort based motivation differs as a function of fronto-striatal circuitry during decision-making. \
+Aim 2b: Second, we will examine how reactivity to feedback (reward, setback) is associated with children’s effort-based decision-making. \
+
+### remove outliers from this data first! 
+removing entire subjects from data frame
+```{r}
+
+beh_scan_comp_wide <- beh_scan_comp_wide %>%
+  filter(! SUBJECTID %in% choice_outlier_subjects$SUBJECTID) %>%
+  filter(! SUBJECTID %in% FB_outlier_subjects$SUBJECTID)
+nrow(beh_scan_comp_wide)
+```
+
+
+## Hypothesis 3: Greater fronto- striatal modulation during the choice phase will be associated with a greater proportion of hard- effort choices
+
+### mod 3 wide version 
+
+#### ACC: NS
+
+```{r}
+mod3_ACC <- lm(prop_hard_choices ~ choice_ACC  +# IQ + Fam_inc_needs +  
+            AGE.c + SEX.c + total_TRs_censored + Reinforce_rate.c,
+           data = beh_scan_comp_wide)
+summary(mod3_ACC)
+```
+
+
+#### mPFC : NS
+```{r}
+mod3_mPFC <- lm(prop_hard_choices ~ choice_mPFC  + #IQ +Fam_inc_needs + 
+            AGE + SEX + total_TRs_censored + Reinforce_rate,
+           data = beh_scan_comp_wide)
+summary(mod3_mPFC)
+```
+
+#### VS: NS
+```{r}
+mod3_VS <- lm(prop_hard_choices ~ choice_VS + #+ IQ +Fam_inc_needs + 
+            AGE + SEX, # + total_TRs_censored + Reinforce_rate,
+           data = beh_scan_comp_wide)
+summary(mod3_VS)
+```
+
+
+### include all ROIs, controlling for others?  all NS.
+```{r}
+mod3_all <- lm(prop_hard_choices ~ choice_VS + choice_mPFC + choice_ACC + #IQ + Fam_inc_needs + 
+            AGE + SEX + total_TRs_censored + Reinforce_rate,
+           data = beh_scan_comp_wide)
+summary(mod3_all)
+
+```
+
+### long versions run with brms:
+run in "COMP_prereg_brms_part1.R"
+```{r}
+
+load("brms_models/preregistration_model_results/mod3_ACC_long_brms.Rdata")
+load("brms_models/preregistration_model_results/mod3_mPFC_long_brms.Rdata")
+load("brms_models/preregistration_model_results/mod3_VS_long_brms.Rdata")
+```
+
+model output loaded here.
+
+#### ACC: NS
+```{r}
+print(mod3_ACC_long_brms, digits = 4)
+```
+
+
+#### mPFC: NS
+```{r}
+print(mod3_mPFC_long_brms, digits = 4)
+```
+
+
+#### VS: NS
+```{r}
+print(mod3_VS_long_brms, digits = 4)
+```
+

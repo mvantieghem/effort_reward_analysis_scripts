@@ -1,0 +1,471 @@
+---
+title: "Aim 1 Hypothesis 1 choice phase"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+## with scanning data 
+from data_cleaning_for_analysis 
+```{r}
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide_WSLS.Rdata")
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long_WSLS.Rdata")
+
+```
+
+
+
+
+# Aim 1: Identify neural substrates that support effort-based persistence behavior. 
+Parameter estimates (copes) will be extracted at the subject level from each ROI and conditions of interest (Choice Phase, Feedback Phase). Linear models in R will model the effects of conditions on reactivity, controlling for between-subject covariates.
+Covariates: For all analyses, we will include between-subject effects of age and sex in primary analyses. For other covariates, in the event that these variables meaningfully influence the outcome of interest, we will keep them in the final models, otherwise they will be removed from final models. These include motor skills (from finger tapping), motion confounds, and IQ.
+
+
+## Hypothesis 1: Effort-based decisions will involve activation of (a) prefrontal regions (vmPFC and ACC) implicated in decision-making and (b) striatal regions (VS) implicated in choice valuation.
+
+### set up & clean data
+```{r} 
+choice_level_order <- c('ACC', 'mPFC',  "VS")
+#organize data for choice phase.
+choice_df <- beh_scan_comp_wide %>%
+  # combine left and right accumbens betas into bilateral! 
+  select(-starts_with("feedback"), -starts_with("setback"), -starts_with("reward")) %>%
+  gather(key = "ROI", value = "beta", allChoices_ACC, allChoices_choice_mPFC,  allChoices_VS) %>%
+  mutate( ROI = ifelse(grepl("ACC", ROI), "ACC", 
+          ifelse(grepl("mPFC", ROI), "mPFC", ifelse(grepl("VS", ROI), "VS", "fix"))),
+      ROI = factor(ROI, levels = choice_level_order), 
+         AGE.c = AGE - mean(AGE, na.rm = T),
+         SEX.c = SEX - mean(SEX, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T))
+summary(as.factor(choice_df$ROI))
+summary(choice_df$beta)
+
+```
+
+
+```{r}
+ggplot(data = choice_df, aes(x = ROI, y = beta)) + 
+  geom_boxplot() + geom_jitter(alpha = 0.2, width = 0.05, color = dark_blue) + theme_classic() 
+
+```
+
+### clean data: remove beta outliers
+```{r}
+# calculate limits fo routliers at 3SD from mean
+choice_outliers <- choice_df %>%
+  group_by(ROI) %>%
+  summarize(outlier_upper = mean(beta) + 3*sd(beta), 
+            outlier_lower = mean(beta) - 3*sd(beta))
+
+# mark outliers for each ROI
+choice_df2 <- data.frame()
+for (region in choice_outliers$ROI){
+    check <- choice_df %>% filter(ROI == region) %>%
+    mutate(choice_outlier = ifelse(beta > choice_outliers$outlier_upper[choice_outliers$ROI == region] | 
+                               beta < choice_outliers$outlier_lower[choice_outliers$ROI == region], 1, 0))
+    choice_df2 <- rbind(choice_df2, check)
+}
+
+# look at outlier #
+outlier_table <- choice_df2 %>%
+  group_by(ROI) %>%
+  summarize(n = n(), 
+            n_outlier = sum(choice_outlier))
+
+outlier_table
+
+# remove data of outliers, mark as NA. 
+choice_df2 <- choice_df2 %>% 
+  mutate(beta = ifelse(choice_outlier == 1, NA, beta)) 
+
+sum(is.na(choice_df2$beta))
+# get subjects for outliers for long analyses 
+choice_outlier_subjects <- choice_df2 %>% 
+  filter(choice_outlier == 1) %>% select (ROI, SUBJECTID)
+save(choice_outlier_subjects, file = "tables/Choice_betas_outlier_subjects.Rdata")
+
+levels(choice_df2$ROI) <- choice_level_order
+
+```
+
+### Model 1 with ACC 
+```{r}
+mod1_ACC <- lm(beta ~  AGE.c + SEX.c + 
+                   total_TRs_censored.c + Reinforce_rate.c, 
+           data = subset(choice_df2, ROI == "ACC"))
+
+choice_effect_ACC <- summary(mod1_ACC)$coefficients[1,]
+
+```
+
+### model 1 with mPFC 
+```{r}
+mod1_mPFC <- lm(beta ~  AGE.c + SEX.c + 
+                   total_TRs_censored.c + Reinforce_rate.c, 
+           data = subset(choice_df2, ROI == "mPFC"))
+
+choice_effect_mPFC <- summary(mod1_mPFC)$coefficients[1,]
+
+```
+
+### model 1 with VS 
+```{r}
+mod1_VS <- lm(beta ~  AGE.c + SEX.c + #IQ.c +
+                   total_TRs_censored.c + Reinforce_rate.c, 
+           data = subset(choice_df2, ROI == "VS"))
+
+choice_effect_VS <- summary(mod1_VS)$coefficients[1,]
+
+```
+
+
+### table of all ROIs 
+
+```{r}
+table_choice_activation <- data.frame(rbind(choice_effect_ACC, choice_effect_mPFC, choice_effect_VS)) %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value")
+table_choice_activation$ROI <- c("ACC", "mPFC", "VS")
+table_choice_activation$df <- 40
+
+table_choice_activation <- table_choice_activation %>% 
+        mutate(sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value < 0.05, "*", "")))) %>%
+  select(ROI, Estimate, SE, df, t_value, p_value, sig)
+table_choice_activation
+save(table_choice_activation, file = "model_results/choice_activation_model_results.Rdata")
+```
+
+### plot of all ROIs
+
+```{r}
+# model together just for the sake of plots. 
+mod1 <- lm(beta ~ ROI + AGE.c + SEX.c + #IQ.c +
+                   total_TRs_censored.c + Reinforce_rate.c, 
+           data = choice_df2)
+summary(mod1)
+effect_df <- data.frame(effect("ROI", mod1, confint = T))
+
+plot_effect <- ggplot(data = effect_df,
+                      aes(x = factor(ROI, level = choice_level_order), y = fit)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+                                 alpha = 0.2, fill = dark_blue) + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_point(data = choice_df2,  aes(x = factor(ROI, level = choice_level_order), y = beta), 
+             position = position_dodge(.9), alpha = 0.25, color = dark_blue) + 
+  theme(legend.position = "none") + ylim(-200, 200)+ 
+  ylab("Reactivity during Choice Phase") + xlab ("ROI") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+pdf("figures/All_ROIs_Choice_Phase_CORRECTED.pdf", width = 3, height = 4)
+plot_effect
+dev.off()
+
+```
+
+## Hypothesis 1 Follow-up model: How do fronto-striatal regions respond differently for hard vs. easy effort choices?
+
+### set up & clean data
+```{r} 
+names(beh_scan_comp_wide)
+
+#organize data for choice phase.
+choice_contrast_df <- beh_scan_comp_wide %>%
+  # combine left and right accumbens betas into bilateral! 
+  select(-starts_with("feedback"), -contains ("FB"), -contains("Setback"), -contains("Reward"), -starts_with("allChoice")) %>%
+  # converting this because i forgot to pull easy choices alone
+ # mutate(easy_choice_ACC = -(hard_easy_choice_ACC - HardChoice_ACC), 
+  #       easy_choice_mPFC = -(hard_easy_choice_ACC - HardChoice_ACC), 
+   #      easy_VS = -(hard_easy_VS - hard_VS)) %>%
+  gather(key = "ROI", value = "beta", HardChoice_ACC, HardChoice_choice_mPFC, HardChoice_VS,
+         EasyChoice_ACC, EasyChoice_choice_mPFC, EasyChoice_VS, 
+         Hard_EasyChoice_ACC, Hard_EasyChoice_choice_mPFC, Hard_EasyChoice_VS) %>%
+  mutate(contrast = as.factor(ifelse(grepl("Hard_Easy", ROI), "Hard_Easy",
+                           ifelse(grepl("Hard", ROI), "Hard", "Easy"))),
+           ROI = as.factor(ifelse(grepl("ACC", ROI), "ACC", 
+                        ifelse(grepl("mPFC", ROI), "mPFC", "VS"))),
+           AGE.c = AGE - mean(AGE, na.rm = T),
+         SEX.c = SEX - mean(SEX, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T))
+summary(as.factor(choice_contrast_df$ROI))
+summary(as.factor(choice_contrast_df$contrast))
+
+
+#sanity check for easy contrast calculation 
+hard_easy_df <- choice_contrast_df %>% filter(contrast == "Hard_Easy")
+hard_df <- choice_contrast_df %>%filter (contrast =="Hard")
+easy_df <- choice_contrast_df %>% filter(contrast == "Easy")
+
+easy_ACC_check <- easy_df$beta[easy_df$ROI == "ACC"]
+hard_ACC_check <- hard_df$beta[hard_df$ROI == "ACC"]
+
+hard_easy_ACC_check <- hard_ACC_check - easy_ACC_check
+hard_easy_ACC_check2 <- hard_easy_df$beta[hard_easy_df$ROI == "ACC"]
+plot(hard_easy_ACC_check, hard_easy_ACC_check2)
+
+```
+
+
+```{r}
+ggplot(data = choice_contrast_df, aes(x = ROI, y = beta)) + facet_grid(~contrast) +
+  geom_boxplot() + geom_jitter(alpha = 0.2, width = 0.05, color = dark_blue) + theme_classic() 
+
+```
+
+### clean data: remove beta outliers
+```{r}
+ #calculate limits fo routliers at 3SD from mean
+choice_contrast_outliers <- choice_contrast_df %>%
+  # remove NAs because not all subjects have these betas! 
+  filter(!is.na(beta) & contrast != "Hard_easy") %>%
+  group_by(ROI, contrast) %>%
+  summarize(outlier_upper = mean(beta, na.rm = T) + 3*sd(beta, na.rm = T), 
+            outlier_lower = mean(beta, na.rm = T)- 3*sd(beta, na.rm = T))
+
+# mark outliers for each ROI
+choice_contrast_df2 <- data.frame()
+for (region in unique(choice_contrast_outliers$ROI)){
+  #region = "choice_mPFC"
+  #print(region)
+  for (cope in unique(choice_contrast_outliers$contrast)){
+   # print(cope)
+      #cope = "reward_minus_setback"
+      check <- choice_contrast_df %>% filter(ROI == region & contrast == cope) %>%
+      mutate(choice_contrast_outlier =
+               ifelse(beta > choice_contrast_outliers$outlier_upper[choice_contrast_outliers$ROI == region & choice_contrast_outliers$contrast == cope] | 
+                                 beta < choice_contrast_outliers$outlier_lower[choice_contrast_outliers$ROI == region & choice_contrast_outliers$contrast == cope], 1, 0))
+      choice_contrast_df2 <- rbind(choice_contrast_df2, check)
+  }
+}
+
+# look at outlier #
+outlier_table <- choice_contrast_df2 %>%
+  group_by(ROI, contrast) %>%
+  summarize(n = n(), 
+            n_outlier = sum(choice_contrast_outlier, na.rm = T))
+# idk why i ahve to do thsi!! 
+outlier_table$n <- outlier_table$n 
+outlier_table$n_outlier <- outlier_table$n_outlier
+
+outlier_table
+# remove data of outliers 
+choice_contrast_df2 <- choice_contrast_df2 %>% 
+  filter(!is.na(beta)) %>%
+  mutate(beta = ifelse(choice_contrast_outlier > 0 , NA, beta))
+sum(is.na(choice_contrast_df2$beta))
+choice_contrast_outlier_subjects <- choice_contrast_df2 %>% 
+  filter(choice_contrast_outlier == 1) %>% select(SUBJECTID, ROI, contrast)
+
+choice_contrast_outlier_subjects
+save(choice_contrast_outlier_subjects, file = "tables/choice_contrast_betas_outlier_subjects.Rdata")
+
+# check that these 5 outlier values were removed
+sum(is.na(choice_contrast_df2$beta))
+```
+
+### Model 1b for ACC 
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod1b_ACC <- lmer(beta ~ contrast + #IQ.c + 
+                     AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "ACC" & contrast != "Hard_Easy"))
+summary(mod1b_ACC)
+
+```
+
+### Model 1B for mPFC 
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod1b_mPFC <- lmer(beta ~ contrast + #IQ.c + 
+                     AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "mPFC"& contrast != "Hard_Easy"))
+summary(mod1b_mPFC)
+
+```
+
+### Model 1b for VS 
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod1b_VS  <- lmer(beta ~ contrast + #IQ.c + 
+                     AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "VS"& contrast != "Hard_Easy"))
+summary(mod1b_VS)
+
+```
+
+
+### Model 1b plot for all ROIs
+
+```{r}
+choice_level_order <- c("ACC", "mPFC", "VS")
+
+effect_ACC <- data.frame(ROI = "ACC", effect("contrast", mod1b_ACC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("contrast", mod1b_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("contrast", mod1b_VS, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_ACC, effect_mPFC, effect_VS)
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = contrast, y = fit, fill = contrast)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.5) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_point(data = subset(choice_contrast_df2, contrast != "Hard_Easy"),
+            aes(x = contrast, y = beta, color = contrast), position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+  
+  ylab("Reactivity during Choice Phase") + xlab ("Choice") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+pdf("figures/All_ROIs_Hard_vs_Easy_Choice.pdf", width = 6, height = 3)
+plot_effect
+dev.off()
+
+```
+
+
+
+re-level ROIs to get results for each ROI
+```{r}
+choice_contrast_df2 <- choice_contrast_df2 %>%
+  mutate(ROI_ACC = relevel(ROI, "ACC"),
+         ROI_mPFC = relevel(ROI, "mPFC"),
+         ROI_VS = relevel(ROI, "VS"),
+         contrast_hard = relevel(contrast, "Hard"), 
+         contrast_easy = relevel(contrast, "Easy"))
+ 
+# ACC
+mod1b_ACC_h <- lmer(beta ~ contrast_hard + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "ACC"))
+hard_effect_ACC <- summary(mod1b_ACC_h)$coefficients[1,]
+
+mod1b_ACC_e <- lmer(beta ~ contrast_easy + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "ACC"))
+easy_effect_ACC <- summary(mod1b_ACC_e)$coefficients[1,]
+hard_minus_easy_effect_ACC <- summary(mod1b_ACC_e)$coefficients[2,]
+
+# MPFC
+mod1b_mPFC_h <- lmer(beta ~ contrast_hard + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "mPFC"))
+hard_effect_mPFC <- summary(mod1b_mPFC_h)$coefficients[1,]
+
+mod1b_mPFC_e <- lmer(beta ~ contrast_easy + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "mPFC"))
+easy_effect_mPFC <- summary(mod1b_mPFC_e)$coefficients[1,]
+hard_minus_easy_effect_mPFC <- summary(mod1b_mPFC_e)$coefficients[2,]
+
+# VS  
+mod1b_VS_h <- lmer(beta ~ contrast_hard + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "VS"))
+hard_effect_VS <- summary(mod1b_VS_h)$coefficients[1,]
+
+mod1b_VS_e <- lmer(beta ~ contrast_easy + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(choice_contrast_df2, ROI == "VS"))
+easy_effect_VS <- summary(mod1b_VS_e)$coefficients[1,]
+hard_minus_easy_effect_VS <- summary(mod1b_VS_e)$coefficients[2,]
+
+# combine tables 
+table_choice_contrast_activation <- data.frame(rbind(
+    hard_effect_ACC, easy_effect_ACC, hard_minus_easy_effect_ACC,
+                       hard_effect_mPFC,  easy_effect_mPFC, hard_minus_easy_effect_mPFC,
+  hard_effect_VS, easy_effect_VS, hard_minus_easy_effect_VS)) 
+table_choice_contrast_activation$level <- rownames(table_choice_contrast_activation)
+
+table_choice_contrast_activation <- table_choice_contrast_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", "")))) %>%
+  select(level, Estimate, SE, df, t_value, p_value, sig)
+table_choice_contrast_activation
+save(table_choice_contrast_activation, file = "model_results/choice_contrast_activation_model_results.Rdata")
+```
+
+
+### Model 1c difference scores between easy & hard.  
+```{r}
+effect_df <- table_choice_contrast_activation %>%
+  filter(grepl("Hard_minus_easy", level)) %>%
+  mutate(ROI = ifelse(grepl("ACC", level), "ACC", 
+                      ifelse(grepl("mPFC", level), "mPFC", "VS")))
+
+# make subject by ROI df
+names(choice_contrast_df2)
+choice_contrast_diff_scores <- choice_contrast_df2 %>%
+  group_by(SUBJECTID) %>%
+  summarize(mPFC = mean(easy_hard_choice_mPFC),
+           ACC = mean(easy_hard_choice_ACC), 
+            VS = mean(easy_hard_VS)) %>%
+  gather(key = ROI, value = easy_hard, mPFC, ACC, VS)
+
+
+
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = ROI, y =Estimate)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+fill = dark_blue, alpha = 0.25) + theme_classic() + ylim(-200, 200) + 
+  geom_errorbar(aes(ymin = Estimate - 2*SE, ymax = Estimate + 2*SE),color = dark_blue, position=position_dodge(.9), width = 0.25) +
+  geom_point(data =choice_contrast_diff_scores,  
+            aes(x = ROI, y = easy_hard), position = position_dodge(.9),
+             alpha = 0.25, color = dark_blue) + theme(legend.position = "none") +
+  ylab("Reactivity for Easy vs. Hard Choices") + xlab ("ROI") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+pdf("figures/All_ROIs_Hard-Easy_Choice_diff_scores.pdf", width = 3, height = 4)
+plot_effect
+dev.off()
+
+```

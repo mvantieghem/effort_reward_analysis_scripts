@@ -1,0 +1,293 @@
+---
+title: "Aim 2 Hypothesis 5 - setback and behavior"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+## with scanning data 
+from data_cleaning_for_analysis 
+```{r}
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide_WSLS.Rdata")
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long_WSLS.Rdata")
+
+```
+
+## Hypothesis 5: The degree of prefrontal modulation in response to setbacks will correspond to lose-stay decision- making strategies 
+(i.e. choosing hard again immediately following a hard setback).
+Does prefrontal modulation to hard-effort setbacks predict whether subjects show more lose-stay behavior? 
+(i.e. subjects who pick hard again after a hard-effort setback)
+
+###  remove outliers 
+```{r}
+# long version, by trial for WSLS
+beh_scan_comp_long_WSLS <- beh_scan_comp_long_WSLS %>%
+  filter(SUBJECTID != "PA067") %>%
+# choice outlier subjects
+    mutate(choice_ACC = ifelse(SUBJECTID %in% choice_outlier_subjects$SUBJECTID[choice_outlier_subjects$ROI == "ACC"], NA, choice_ACC), 
+         choice_VS = ifelse(SUBJECTID %in% choice_outlier_subjects$SUBJECTID[choice_outlier_subjects$ROI == "VS"], NA, choice_VS),
+         choice_mPFC = ifelse(SUBJECTID %in% choice_outlier_subjects$SUBJECTID[choice_outlier_subjects$ROI == "mPFC"], NA, choice_mPFC),
+         
+         # FB outlier subjects
+         reward_vmPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "vmPFC"], NA, reward_vmPFC),
+         reward_setback_vmPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "vmPFC"], NA, reward_setback_vmPFC),
+         
+         reward_mPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "mPFC"], NA, reward_mPFC),
+         reward_setback_mPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "mPFC"], NA, reward_setback_mPFC),
+         
+         reward_VS = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "VS"], NA, reward_VS),
+         reward_setback_VS = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "VS"], NA, reward_setback_VS),
+         
+         reward_Amyg  = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "Amyg"], NA, reward_Amyg),
+         reward_setback_Amyg = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "Amyg"], NA, reward_setback_Amyg))
+```
+
+
+### make wide version of data 
+```{r, include = F}
+
+WSLS_by_subj_condition <- beh_scan_comp_long_WSLS %>%
+                # removing PA067 becayse they are outlier for all feedback phase beh_scan_comp_long <- beh_scan_comp_long %>%
+  # removing PA067 becayse they are outlier for all feedback phase 
+  filter(SUBJECTID != "PA067") %>%
+# choice outlier subjects
+    mutate(choice_ACC = ifelse(SUBJECTID %in% choice_outlier_subjects$SUBJECTID[choice_outlier_subjects$ROI == "ACC"], NA, choice_ACC), 
+         choice_VS = ifelse(SUBJECTID %in% choice_outlier_subjects$SUBJECTID[choice_outlier_subjects$ROI == "VS"], NA, choice_VS),
+         choice_mPFC = ifelse(SUBJECTID %in% choice_outlier_subjects$SUBJECTID[choice_outlier_subjects$ROI == "mPFC"], NA, choice_mPFC),
+         
+         # FB outlier subjects
+         reward_vmPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "vmPFC"], NA, reward_vmPFC),
+         reward_setback_vmPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "vmPFC"], NA, reward_setback_vmPFC),
+         
+         reward_mPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "mPFC"], NA, reward_mPFC),
+         reward_setback_mPFC = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "mPFC"], NA, reward_setback_mPFC),
+         
+         reward_VS = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "VS"], NA, reward_VS),
+         reward_setback_VS = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "VS"], NA, reward_setback_VS),
+         
+         reward_Amyg  = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "Amyg"], NA, reward_Amyg),
+         reward_setback_Amyg = ifelse(SUBJECTID %in% FB_outlier_subjects$SUBJECTID[FB_outlier_subjects$ROI == "Amyg"], NA, reward_setback_Amyg),
+         
+         # hard FB contrast outlier subjects
+         hard_setback_vmPFC  = ifelse(SUBJECTID %in% hard_FB_outlier_subjects$SUBJECTID[hard_FB_outlier_subjects$ROI == "vmPFC"], NA, hard_setback_FB_vmPFC),
+         hard_reward_mPFC = ifelse(SUBJECTID %in% hard_FB_outlier_subjects$SUBJECTID[hard_FB_outlier_subjects$ROI == "mPFC"], NA, hard_reward_FB_mPFC)) %>%
+# now make 4 rows per subject for each WSLS condition
+  group_by(SUBJECTID, Effort_Choice_prior, Feedback_prior) %>%
+  summarize(N_trials_per_cond = n(),
+             prop_stay = mean(stay_shift, na.rm= T), 
+            Reinforce_hard = mean(Reinforce_hard),
+            prop_hard_choices = mean(proportion_hard),
+            reward_Amyg = mean(reward_Amyg), 
+            reward_VS = mean(reward_VS), 
+            reward_mPFC = mean(reward_mPFC), 
+            reward_vmPFC = mean(reward_vmPFC),
+            setback_Amyg = mean(setback_Amyg), 
+            setback_VS = mean(setback_VS), 
+            setback_mPFC = mean(setback_mPFC), 
+            setback_vmPFC = mean(setback_vmPFC),
+            reward_setback_Amyg = mean(reward_setback_Amyg), 
+            reward_setback_VS = mean(reward_setback_VS), 
+            reward_setback_mPFC = mean(reward_setback_mPFC), 
+            reward_setback_vmPFC = mean(reward_setback_vmPFC),
+            # hard choices only
+            hard_reward_Amyg = mean(hard_reward_Amyg), 
+            hard_reward_VS = mean(hard_reward_VS), 
+            hard_reward_mPFC = mean(hard_reward_FB_mPFC), 
+            hard_reward_vmPFC = mean(hard_reward_FB_vmPFC),
+            hard_setback_Amyg = mean(hard_setback_Amyg), 
+            hard_setback_VS = mean(hard_setback_VS), 
+            hard_setback_mPFC = mean(hard_setback_FB_mPFC), 
+            hard_setback_vmPFC = mean(hard_setback_FB_vmPFC),
+            hard_reward_setback_Amyg = mean(hard_reward_setback_Amyg), 
+            hard_reward_setback_VS = mean(hard_reward_setback_VS), 
+            hard_reward_setback_mPFC = mean(hard_reward_setback_FB_mPFC), 
+            hard_reward_setback_vmPFC = mean(hard_reward_setback_FB_vmPFC),
+            # covariates
+            IQ.c = mean(IQ.c), 
+            SEX.c = mean(SEX.c), 
+            AGE.c = mean(AGE.c), 
+            Reinforce_rate.c = mean(Reinforce_rate), 
+            perceived_control = mean(perceived_control), 
+            frustrated = mean(frustrated), 
+            motivated = mean(motivated), 
+            win_feeling = mean(win_feeling), 
+            lose_feeling = mean(lose_feeling), 
+            perceived_reinforce = mean(perceived_reinforce)) 
+
+save(WSLS_by_subj_condition, file= "../../2_cleaning_QC/cleaned_data//WSLS_by_subj_condition.Rdata")
+
+WSLS_summary_hard_setback <- subset(WSLS_by_subj_condition, Feedback_prior == "Setback" & Effort_Choice_prior == "Hard")
+nrow(WSLS_summary_hard_setback)
+
+```
+
+## Hypothesis 5: with hard setback only [subset of participants!!].
+### wide version
+
+#### mPFC: NS
+```{r}
+WSLS_mPFC_hard_setbacks <- lm(prop_stay ~ hard_setback_mPFC + N_trials_per_cond + Reinforce_rate.c + 
+                                        SEX.c + AGE.c, 
+                              data = WSLS_summary_hard_setback)
+summary(WSLS_mPFC_hard_setbacks)
+```
+
+
+### long version with brms: NS
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_mPFC_long_hard_setbacks.Rdata")
+print(WSLS_mPFC_long_brms_hard_setbacks, digits = 5)
+
+```
+
+
+#### vmPFC: NS 
+```{r}
+WSLS_vmPFC_hard_setbacks <- lm(prop_stay ~ hard_setback_vmPFC + N_trials_per_cond + Reinforce_rate.c +  
+                                         SEX.c + AGE.c, 
+                              data = WSLS_summary_hard_setback)
+summary(WSLS_vmPFC_hard_setbacks)
+```
+
+
+### long version with brms: NS
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_vmPFC_long_hard_setbacks.Rdata")
+print(WSLS_vmPFC_long_brms_hard_setbacks, digits = 5)
+
+```
+
+
+## Hypothesis 5: with hard reward-setback contrast 
+
+#### mPFC: NS 
+```{r}
+WSLS_mPFC_hard_reward_setbacks <- lm(prop_stay ~ hard_reward_setback_mPFC + N_trials_per_cond + Reinforce_rate.c +  
+                                         SEX.c + AGE.c, 
+                              data = WSLS_summary_hard_setback)
+summary(WSLS_mPFC_hard_reward_setbacks)
+```
+
+#### brms long version
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_mPFC_long_hard_reward_setback.Rdata")
+print(WSLS_mPFC_long_brms_hard_reward_setback, digits = 5)
+```
+
+#### vmPFC: NS 
+```{r}
+WSLS_vmPFC_hard_reward_setbacks <- lm(prop_stay ~ hard_reward_setback_vmPFC + N_trials_per_cond + Reinforce_rate.c +  
+                                         SEX.c + AGE.c, 
+                              data = WSLS_summary_hard_setback)
+summary(WSLS_vmPFC_hard_reward_setbacks)
+```
+
+#### brms long version
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_vmPFC_long_hard_reward_setback.Rdata")
+print(WSLS_vmPFC_long_brms_hard_reward_setback, digits = 5)
+```
+
+
+## Hypothesis 5: all setback trials (hard + easy)
+### wide version
+
+#### mPFC: TREND
+```{r}
+WSLS_mPFC_all_setbacks <- lm(prop_stay ~ setback_mPFC + N_trials_per_cond + Reinforce_rate.c, #+
+                              # SEX.c + AGE.c,
+                              data = WSLS_summary_hard_setback)
+summary(WSLS_mPFC_all_setbacks)
+```
+
+#### brms version
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_mPFC_long_all_setbacks.Rdata")
+print(WSLS_mPFC_long_brms_all_setbacks, digits = 5)
+```
+
+#### vmPFC: NS
+```{r}
+WSLS_vmPFC_all_setbacks <- lm(prop_stay ~ setback_vmPFC + N_trials_per_cond + Reinforce_rate.c + 
+                                          SEX.c + AGE.c, 
+                              data = WSLS_summary_hard_setback)
+summary(WSLS_vmPFC_all_setbacks)
+```
+
+#### long version with brms
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_vmPFC_long_all_setbacks.Rdata")
+print(WSLS_vmPFC_long_brms_all_setbacks, digits = 4)
+```
+
+
+
+## Hypothesis 5: with reward-setback contrast (hard + easy)
+### wide version
+
+#### mPFC: 
+```{r}
+WSLS_mPFC_hard_setbacks_contrast <- lm(prop_stay ~ reward_setback_mPFC + N_trials_per_cond + Reinforce_rate.c +
+                                            SEX.c + AGE.c, 
+                                       data = WSLS_summary_hard_setback)
+
+summary(WSLS_mPFC_hard_setbacks_contrast)
+
+```
+
+
+### long version with brms 
+```{r}
+
+load("brms_models/preregistration_model_results/mod5_WSLS_mPFC_long_all_reward_setback.Rdata")
+print(WSLS_mPFC_long_brms_all_reward_setback, digits = 4)
+```
+
+
+#### vmPFC: NS
+```{r}
+WSLS_vmPFC_hard_setbacks_contrast <- lm(prop_stay ~ reward_setback_vmPFC + N_trials_per_cond + Reinforce_rate.c +
+                                             SEX.c + AGE.c, 
+                                        data = WSLS_summary_hard_setback)
+
+summary(WSLS_vmPFC_hard_setbacks_contrast)
+
+```
+
+### long version with brms 
+```{r}
+load("brms_models/preregistration_model_results/mod5_WSLS_vmPFC_long_all_reward_setback.Rdata")
+print(WSLS_vmPFC_long_brms_all_reward_setback, digits = 4)
+```
+
+

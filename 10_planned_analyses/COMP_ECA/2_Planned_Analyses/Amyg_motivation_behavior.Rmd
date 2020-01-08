@@ -1,0 +1,372 @@
+---
+title: "Does Amyg to setbacks mediate role of motivation on persistence?"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# results:
+A) ECA predicts motivation & amyg to setbacks, and motivation predicts amyg to setbacks. but motivation does not mediate effect of ECA on amyg to setbacks. \
+B) Amyg to setbacks, motivation, and PC1: NOT related to: prop hard choices, prop stay after all setbacks, or prop stay after hard setbacks. 
+
+
+
+# load data 
+```{r}
+# load all data with PCA added!
+source("../../../0_R_analysis_setup_file.R", echo=F)
+load("data/all_pacct_effort_data_with_PCA.rda")
+library(mediation)
+```
+
+## get outliers for ROI contrasts of interest
+```{r}
+load("tables/Feedback_betas_outlier_subjects.Rdata")
+outlier_remove <- FB_outlier_subjects %>%
+  filter((ROI == "vmPFC" & contrast == "setback") |
+           (ROI == "Amyg" & contrast == "setback"))
+
+```
+
+## reformat data and remove nas
+```{r}
+ 
+beh_scan_ECA_wide2 <- beh_scan_ECA_wide %>%
+  dplyr::select(SUBJECTID, GROUP_ECA, PC1_log,  AGE.c, SEX.c, 
+                Fam_inc_needs, IQ, 
+         perceived_effort_ave, 
+         perceived_reinforce, Reinforce_rate,
+         perceived_control, 
+         win_feeling, lose_feeling, 
+         motivated, frustrated,
+        median_motor_RT_ave, 
+        setback_Amyg, reward_Amyg,
+        setback_vmPFC, reward_vmPFC, 
+        total_TRs_censored, 
+        choice_choice_mPFC, 
+        prop_hard_choices, 
+        N_trials) %>%
+  mutate(diff_pos_affect = win_feeling - lose_feeling) %>%
+  # remove outliers! 
+  filter(!SUBJECTID %in% outlier_remove$SUBJECTID) %>%
+  na.omit() 
+
+nrow(beh_scan_ECA_wide2)
+```
+
+## reformat WSLS data
+```{r}
+beh_scan_ECA_wide_WSLS2 <- beh_scan_ECA_wide_WSLS %>%
+    dplyr::select(SUBJECTID, GROUP_ECA, PC1_log,  AGE.c, SEX.c, 
+                Fam_inc_needs, IQ, 
+         perceived_effort_ave, 
+         perceived_reinforce, Reinforce_rate,
+         perceived_control, 
+         win_feeling, lose_feeling, 
+         motivated, frustrated,
+        median_motor_RT_ave, 
+        setback_Amyg, reward_Amyg,
+        setback_vmPFC, reward_vmPFC, 
+        total_TRs_censored, 
+        choice_choice_mPFC, 
+        stay_shift, 
+        N_trials, 
+        Feedback_prior, Effort_Choice_prior)%>%
+  mutate(diff_pos_affect = win_feeling - lose_feeling) %>%
+  # remove missed feedback
+  filter(Feedback_prior != "Too_slow") %>%
+  
+  # remove outliers! 
+  filter(!SUBJECTID %in% outlier_remove$SUBJECTID) %>%
+  na.omit() 
+  
+nrow(beh_scan_ECA_wide_WSLS2)
+
+beh_scan_ECA_wide_WSLS2 %>%
+  group_by(Effort_Choice_prior, Feedback_prior) %>%
+  dplyr::summarize(mean(stay_shift))
+
+```
+
+## make a WSLS dataset: setbacks only, collapsed harrd & easy
+need 1 row per subj
+```{r}
+beh_scan_ECA_wide_WSLS_FB <- beh_scan_ECA_wide_WSLS2 %>%
+  group_by(SUBJECTID, Feedback_prior) %>%
+    dplyr::summarize(GROUP_ECA = GROUP_ECA[1],
+                     PC1_log = mean(PC1_log, na.rm = T),
+                     AGE.c = AGE.c[1],
+                     SEX.c = SEX.c[1], 
+                Fam_inc_needs = Fam_inc_needs[1],
+                IQ = IQ[1], 
+         perceived_effort_ave = perceived_effort_ave[1], 
+         perceived_reinforce = perceived_reinforce[1],
+        Reinforce_rate = Reinforce_rate[1],
+         perceived_control = perceived_control[1], 
+         win_feeling = win_feeling[1],
+        lose_feeling = lose_feeling[1],
+         motivated = motivated[1],
+        frustrated = frustrated[1],
+        diff_pos_affect = diff_pos_affect[1],
+        median_motor_RT_ave = median_motor_RT_ave[1],
+        setback_Amyg = setback_Amyg[1],
+        reward_Amyg = reward_Amyg[1],
+        setback_vmPFC = setback_vmPFC[1],
+        reward_vmPFC = reward_vmPFC[1], 
+        total_TRs_censored = total_TRs_censored[1], 
+        choice_choice_mPFC = choice_choice_mPFC[1], 
+        stay_shift = mean(stay_shift, na.rm = T), 
+        N_trials = mean(N_trials, na.rm = T))
+
+beh_scan_ECA_wide_WSLS_setbacks <- beh_scan_ECA_wide_WSLS_FB %>%
+  filter(Feedback_prior == "Setback")
+
+```
+
+# what predicts amyg to setbacks? 
+confirming specification curve analysis 
+
+## amygdala and motivation: SIG 
+```{r}
+
+amyg_mod_motiv  <- lm(setback_Amyg ~  motivated +  total_TRs_censored + 
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(amyg_mod_motiv)
+```
+
+## amygdala by motivation and ECA : both sig
+```{r}
+
+amyg_mod_motiv_PC1 <- lm(setback_Amyg ~  motivated +  total_TRs_censored + 
+                        PC1_log + perceived_control + median_motor_RT_ave +
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(amyg_mod_motiv_PC1)
+
+```
+
+motivation is related to your ability to lower reactivity to setbacks!
+```{r}
+effect_df <- data.frame(effect("motivated", amyg_mod_motiv_PC1), conf_int = T)
+
+effect_plot <- ggplot(data = effect_df, aes(x = motivated, y = fit)) + 
+  geom_line(color = dark_blue) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_jitter(data =  beh_scan_ECA_wide_WSLS_setbacks, color = dark_blue,
+             aes(x = motivated, y = setback_Amyg), alpha = 0.2, width = 0.05, height = 0) + 
+  theme_classic() + ylab("Amygdala response to setbacks") + 
+  xlab("Self-reported motivation")
+effect_plot
+ggsave(effect_plot, file = "figures/amyg_motivation_behavior/amyg_to_setbacks_by_motivation.png", 
+     height = 4, width = 6)
+```
+
+
+plot effect 
+```{r}
+effect_df <- data.frame(effect("PC1_log", amyg_mod_motiv_PC1), conf_int = T)
+
+effect_plot <- ggplot(data = effect_df, aes(x = PC1_log, y = fit)) + 
+  geom_line(color = dark_blue) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_jitter(data = beh_scan_ECA_wide2, color = dark_blue,
+             aes(x = PC1_log, y = setback_Amyg), alpha = 0.2, width = 0.05, height = 0) + 
+  theme_classic() + ylab("Amygdala response to setbacks") + 
+  xlab("Cumulative ECA score")
+effect_plot
+ggsave(effect_plot, file = "figures/amyg_motivation_behavior/amyg_to_setbacks_by_PC1.png", 
+     height = 4, width = 6)
+```
+
+
+## check: relationship between ECA and motivation
+```{r}
+
+motiv_mod_PC1 <- lm(motivated ~  
+                        PC1_log + perceived_control + median_motor_RT_ave +
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(motiv_mod_PC1)
+
+```
+
+plot effect 
+```{r}
+effect_df <- data.frame(effect("PC1_log", motiv_mod_PC1), conf_int = T)
+
+effect_plot <- ggplot(data = effect_df, aes(x = PC1_log, y = fit)) + 
+  geom_line(color = dark_blue) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_jitter(data =  beh_scan_ECA_wide_WSLS_setbacks, color = dark_blue,
+             aes(x = PC1_log, y = motivated), alpha = 0.2, width = 0.05, height = 0) + 
+  theme_classic() + ylab("motivation") + 
+  xlab("Cumulative ECA score")
+effect_plot
+
+ggsave(effect_plot, file = "figures/amyg_motivation_behavior/motivation_by_PC1.png", 
+     height = 4, width = 6)
+```
+
+## does motivation mediate effect of ECA on amygdala to setbacks? No 
+not quite - not really sure why.
+```{r}
+# treat = X variable
+motiv_mediate_PC1_amyg <- mediate(model.m = motiv_mod_PC1, model.y = amyg_mod_motiv_PC1,
+                                  sims = 1000, boot = FALSE,
+                                  boot.ci.type = "perc",
+                                  treat = "PC1_log", mediator = "motivated")
+
+summary(motiv_mediate_PC1_amyg)
+```
+
+
+
+# hard effort setback
+
+## by motivation: NS 
+only age is significant! 
+including perceived control because related to motivation
+```{r}
+persist_mod_motiv <- lm(stay_shift ~  motivated + perceived_control +  
+                          median_motor_RT_ave + N_trials +
+                        AGE.c + SEX.c, 
+                      data = filter(beh_scan_ECA_wide_WSLS2, Effort_Choice_prior == "Hard", 
+                      Feedback_prior== "Setback"))
+
+summary(persist_mod_motiv)
+```
+
+## by Amyg: NS 
+only age is significant! 
+```{r}
+persist_hard_mod_Amyg <- lm(stay_shift ~  setback_Amyg + total_TRs_censored +
+                          median_motor_RT_ave +  N_trials  +
+                        AGE.c + SEX.c, 
+                      data = filter(beh_scan_ECA_wide_WSLS2, Effort_Choice_prior == "Hard", 
+                      Feedback_prior== "Setback"))
+
+summary(persist_hard_mod_Amyg)
+```
+
+
+# persist all setbacks 
+
+## by motivation: NS 
+only age is significant! 
+including perceived control because related to motivation
+```{r}
+persist_mod_motiv <- lm(stay_shift ~  motivated + #perceived_control +  
+                          median_motor_RT_ave + N_trials + #PC1_log +
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(persist_mod_motiv)
+```
+
+## with more covarriates: NS 
+```{r}
+persist_mod_motiv <- lm(stay_shift ~  motivated + perceived_control +  
+                          median_motor_RT_ave + N_trials + PC1_log +
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(persist_mod_motiv)
+```
+
+
+## by Amyg: NS
+
+```{r}
+persist_mod_Amyg <- lm(stay_shift ~  setback_Amyg + total_TRs_censored +
+                          median_motor_RT_ave +  N_trials  +
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(persist_mod_Amyg)
+```
+
+
+## by Amyg: adding PC1: NS 
+
+```{r}
+persist_mod_Amyg <- lm(stay_shift ~  setback_Amyg + total_TRs_censored +
+                          median_motor_RT_ave +  N_trials  +  PC1_log + 
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(persist_mod_Amyg)
+```
+
+## by PC1 alone: Not sig! 
+
+```{r}
+persist_mod_Amyg <- lm(stay_shift ~  #setback_Amyg + total_TRs_censored +
+                          median_motor_RT_ave +  N_trials  +  PC1_log +
+                        AGE.c + SEX.c, 
+                      data =  beh_scan_ECA_wide_WSLS_setbacks)
+
+summary(persist_mod_Amyg)
+```
+
+
+# persist after reward vs. setback 
+
+## by motivation: NS
+```{r}
+persist_motiv_3way <- lm(stay_shift ~  motivated*Effort_Choice_prior*Feedback_prior +
+                     total_TRs_censored +  median_motor_RT_ave +  N_trials  +
+                        AGE.c + SEX.c, 
+                      data = beh_scan_ECA_wide_WSLS2)
+
+summary(persist_motiv_3way)
+```
+
+
+## by amyg: NS
+```{r}
+persist_amyg_3way <- lm(stay_shift ~  setback_Amyg*Effort_Choice_prior*Feedback_prior +
+                     total_TRs_censored +  median_motor_RT_ave +  N_trials  +
+                        AGE.c + SEX.c, 
+                      data = beh_scan_ECA_wide_WSLS2)
+
+summary(persist_amyg_3way)
+```
+
+
+# prop hard NS
+## Amyg to setbacks: NS 
+```{r}
+choices_mod_amyg <- lm(prop_hard_choices ~ setback_Amyg +
+                        total_TRs_censored + PC1_log +
+                          N_trials + 
+                          median_motor_RT_ave + 
+                        AGE.c + SEX.c, 
+                      data = beh_scan_ECA_wide2)
+
+summary(choices_mod_amyg)
+```
+
+
+## by motivation: NS 
+includingg perceived control and motor skills, since relte to motivation 
+```{r}
+choices_mod_motiv<- lm(prop_hard_choices ~ 
+                          motivated + N_trials + 
+                         perceived_control + median_motor_RT_ave + 
+                        AGE.c + SEX.c, 
+                      data = beh_scan_ECA_wide2)
+
+summary(choices_mod_motiv)
+```

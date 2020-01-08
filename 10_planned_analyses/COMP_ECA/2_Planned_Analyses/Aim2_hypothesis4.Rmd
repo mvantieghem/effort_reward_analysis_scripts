@@ -1,0 +1,157 @@
+---
+title: "Aim2_hypothesis4"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r, include = F, warnings = F, echo=FALSE}
+library(tidyverse)
+library(lmerTest)
+library(ggplot2)
+library(effects)
+library(corrplot) # for pretty correlation plots 
+library(psycho) # for pretty correlation tables.
+library(gridExtra) # to combine plots nicely
+library(coefplot) # to make jared's coefficient plots
+
+# color scheme 
+my_colors <-  scale_color_manual(values=c("#0006CC", "#CC0000", "black", "black"))
+my_colors2 <- scale_fill_manual(values=c("#0006CC", "#CC0000","black", "black"))
+dark_blue = "#0006CC"
+dark_Red = "#CC0000"
+
+```
+
+```{r}
+# load all data with PCA added!
+load("../1_PCA/data/all_pacct_effort_data_with_PCA.rda")
+```
+
+
+# Aim 2: ECA and internalizing problems, moderated by persistence measures 
+Identify individual-level associations between the neurobehavioral phenotype of persistence and resilience in ECA-exposed children
+
+## Hypothesis 4: Children’s regulation following setbacks will moderate the effects of ECA on internalizing problems: 
+### (4a) Neural: stronger amygdala-prefrontal regulatory connectivity in response to setbacks
+not doing conectivity!! 
+```{r}
+#remove outliers!
+
+```
+
+#### result: Amygdala trend main effect on internalizing, no moderation.
+```{r}
+setbackAmyg_mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP + reward_setback_Amyg + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(setbackAmyg_mod1_CBCL)
+
+
+setbackAmyg_mod1b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP *reward_setback_Amyg + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(setbackAmyg_mod1b_CBCL)
+
+
+setbackAmyg_mod2_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt + reward_setback_Amyg + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+
+setbackAmyg_mod2b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt * reward_setback_Amyg + AGE.c + SEX.c+ total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(setbackAmyg_mod2b_CBCL)
+```
+
+#### Sanity check, reward VS reactivity? NS
+```{r}
+RewVS_mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP + reward_setback_VS + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod1_CBCL)
+
+
+RewVS_mod1b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP *reward_setback_VS + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod1b_CBCL)
+
+
+RewVS_mod2_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt + reward_setback_VS + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+
+RewVS_mod2b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt * reward_setback_VS + AGE.c + SEX.c+ total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod2b_CBCL)
+```
+
+
+#### Sanity check, vmPFC reactivity? NS
+```{r}
+RewVS_mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP + reward_setback_vmPFC + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod1_CBCL)
+
+
+RewVS_mod1b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP *reward_setback_vmPFC + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod1b_CBCL)
+
+
+RewVS_mod2_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt + reward_setback_vmPFC + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+
+RewVS_mod2b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt * reward_setback_vmPFC + AGE.c + SEX.c+ total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod2b_CBCL)
+```
+
+
+#### Sanity check, mPFC reactivity? NS
+```{r}
+RewVS_mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP + reward_setback_FB_mPFC + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod1_CBCL)
+
+
+RewVS_mod1b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP *reward_setback_FB_mPFC + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod1b_CBCL)
+
+
+RewVS_mod2_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt + reward_setback_FB_mPFC + AGE.c + SEX.c + total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+
+RewVS_mod2b_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt * reward_setback_FB_mPFC + AGE.c + SEX.c+ total_TRs_censored, 
+                      data = beh_scan_ECA_wide)
+summary(RewVS_mod2b_CBCL)
+```
+
+### (4b) Behavioral: greater persistence following a setback (indexed by greater lose-stay strategies) will be associated with fewer internalizing problems within the ECA group
+
+result: no main effect or interaction of persistence after hard-effort setback.
+```{r}
+WSLS_mod1_CBCL <- lm(CBCL_4_INTERNPROB_T ~ GROUP*stay_shift+ AGE + SEX,  #Fam_inc_needs, , 
+                     data = subset(beh_ECA_subj_WSLS, Feedback_prior == "Setback" & Effort_Choice_prior == "Hard"))
+
+#hist(beh_ECA_subj_WSLS$AGE)
+
+summary(WSLS_mod1_CBCL)
+coefplot(WSLS_mod1_CBCL)
+```
+
+family income to needs isnt' sig, so omitting because some subejcts missing data.
+```{r}
+WSLS_mod2_CBCL <- lm(CBCL_4_INTERNPROB_T ~ PC1_sqrt*stay_shift+ AGE + SEX, # Fam_inc_needs, 
+                     data = subset(beh_ECA_subj_WSLS, Feedback_prior == "Setback" & Effort_Choice_prior == "Hard"))
+
+#hist(beh_ECA_subj_WSLS$AGE)
+
+summary(WSLS_mod2_CBCL)
+coefplot(WSLS_mod2_CBCL)
+
+```
+

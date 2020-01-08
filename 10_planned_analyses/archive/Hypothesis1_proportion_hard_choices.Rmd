@@ -1,0 +1,415 @@
+---
+title: "Hypothesis1_analysis"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+# key for model categories:
+mod1 - COMPS: comp only analysis, N = 52
+mod2 - GROUP2: ECA vs. COMP
+mod3 - GROUP3: PI vs. DA vs. COMP
+mod4 - GROUP4: PI vs. DA vs. DC vs. COMP
+
+# summary of results 
+## Hypothesis 1: Prop Hard Effort Choices \
+*COMPS:* Age x TrialN interaction, where older kids keep picking hard, but younger kids decline in hard-effort choies over time. \
+*GROUP2:* No group differences or GROUP interactions with age or trialN. \
+*GROUP3:* same \
+*GROUP4:* same \
+
+# To do
+breakdown post-hoc tests for the group effects \
+look at effects of sex, age, reinforcement rate, trial N. \
+Find # of caregiver switches and add stuff \
+symptoms! 
+
+```{r}
+library(tidyverse)
+library(lmerTest)
+library(ggplot2)
+library(effects)
+my_colors <-  scale_color_manual(values=c("#0006CC", "#CC0000", "black", "black"))
+my_colors2 <- scale_fill_manual(values=c("#0006CC", "#CC0000","black", "black"))
+
+######### lmer Version #######
+condslope.lmer.slopes <- function(x, z, c, y){
+#  condslope.lmer( "age1","GROUP", 0, Amyg_piecewise_orig)
+  # x = name of x variable
+  # z = name of z variable (moderator)
+  # c = conditional value of z
+  # y = reg object
+  # lmer model must be in this order x + z + x*z
+# updated slightly by MVT on March 4, 2019 
+# bcause tidy doesn't work.
+
+out <- summary(y)
+xz <- paste(x, z, sep=":")
+#zx <- paste(z, x, sep = ":")
+w0.intercept <- fixef(y)["(Intercept)"] + fixef(y)[z]*c
+w1.slope <- fixef(y)[x] + fixef(y)[xz]*c 
+#y.cond <- w0.intercept + w1.slope*xvalue
+require(broom)
+modtidy <- data.frame(summary(y)$coef)
+modtidy$rownames <- rownames(modtidy)
+modtidy$df <- 100
+coef2.var <- subset(modtidy, rownames == x)$Std..Error^2
+coef4.var <- subset(modtidy, rownames == xz)$Std..Error^2
+out.vcov <- vcov(y)
+cond.se <- sqrt(coef2.var + (c) * (c) * coef4.var + 2 * (c) * out.vcov[x, xz])
+t.val <- w1.slope/cond.se
+p.val <- 2*(1-pt(abs(t.val), subset(modtidy, rownames == x)$df, lower.tail=T))
+lower95 <- w1.slope-qt(0.975, subset(modtidy, rownames == x)$df)*cond.se
+upper95 <- w1.slope+qt(0.975, subset(modtidy, rownames == x)$df)*cond.se
+# z.out <- z.test(w1.slope, sigma.x= cond.se)
+return(list(w0.intercept=round(w0.intercept, digits = 2), w1.slope=round(w1.slope, digits = 2),
+            df = subset(modtidy, rownames == x)$df[1],
+            t.val = round(t.val, digits = 2), p.val = round(p.val, digits = 3), 
+            lower95 = round(lower95, digits = 2), 
+            upper95 = round(upper95, digits = 2)))
+}
+
+
+```
+
+
+# 1. get data
+## 1. load in cleaned behavior (by run) data.
+```{r}
+
+load("../behavioral_data/3_effort_task_data/compiled/compiled_effort_scan_version_filtered_usable.Rdata")
+head(behavior_filtered)
+
+length(unique(behavior_filtered$SUBJECTID))
+```
+
+## 2. load in compiled demographics (by run)
+and set up grouping variables.
+```{r}
+
+#name of this file changed 
+load("../behavior_preproc_scripts/progress_report_QC/behavior_only/beh_data_QC_and_demographics2019-06-06.Rdata")
+head(df_beh)
+summary(as.factor(df_beh$GROUP.final))
+demo.data <- df_beh %>%
+  mutate(GROUP.4 = ifelse(GROUP.final == 4, 3, GROUP.final), 
+         GROUP.3 = ifelse(GROUP.final > 2, NA, GROUP.final ),
+         GROUP.2 = ifelse(GROUP.final >= 1, 1, 0 ))
+# make a 4 group variable
+summary(as.factor(demo.data$GROUP.4))
+
+# make a 3 group variable (no DCs- NA)
+summary(as.factor(demo.data$GROUP.3))
+
+# make a 2 goup variable
+summary(as.factor(demo.data$GROUP.2))
+```
+
+check subj N usable 
+```{r}
+print(paste0("total subjects with any behavior: ", length(unique(demo.data$SUBJECTID))))
+
+usable <- subset(demo.data, behavior_include == 1)
+print(paste0("total behavior usable subjects: ", length(unique(usable$SUBJECTID))))
+
+not_usable <- subset(demo.data, is.na(behavior_include))
+nrow(not_usable) # 59 runs are not usable.
+print(paste0("total excluded behavior subjects: ", length(unique(not_usable$SUBJECTID))))
+```
+
+demo table for this sample by 2 groups: ECA vs. comp
+```{r}
+names(usable)
+usable_subjects <- usable %>% 
+  group_by(IDENT_SUBID) %>%
+  summarize( GROUP.2 = mean(GROUP.2),
+             GROUP.4 = mean(GROUP.4),
+              AGE = mean(AGE, na.rm = T),  
+             Sex = mean(Sex, na.rm = T))
+
+usable_subjects %>%
+  group_by(GROUP.2) %>%
+  summarize( N = n(), mean_Age = mean(AGE, na.rm = T), 
+             sd_age = sd(AGE, na.rm = T),
+             min_age = min(AGE, na.rm = T),
+             max_age = max(AGE, na.rm = T), 
+             prop_female = mean(Sex, na.rm = T), 
+             N_female = sum(Sex, na.rm = T), 
+             N_male = n() - sum(Sex, na.rm =T))
+
+```
+
+
+## 3. load in long-formatted data per subject (trialwise)
+```{r}
+load(paste0("../behavior/behavioral_data/compiled_long_format_usable_2019-04-08.Rdata"))
+data.long$SUBJECTID <- data.long$SUB
+
+length(unique(data.long$SUBJECTID)) # 
+
+```
+
+## merge 
+```{r}
+data.long.demo <- merge(data.long, demo.data, by = "SUBJECTID")
+length(unique(data.long.demo$SUBJECTID))
+
+
+df_use <- merge(data.long.demo, behavior_filtered, by =  c("SUBJECTID", "Run_number"))
+length(unique(df_use$SUBJECTID))
+```
+
+## check age
+fixed! (no neg #s)
+```{r}
+summary(df_use$AGE)
+hist(df_use$AGE)
+```
+
+
+# Hypothesis 1
+
+## set up data:
+filter out missed trials, too slow, and extreme reinforce rates.
+```{r}
+## sort the dataframe by trial
+df_use$Run_Number.n <- ifelse(df_use$Run_number == "RUN1", 1, 2)
+summary(df_use$Run_Number.n)
+
+df_use <- df_use[order(df_use$SUBJECTID, df_use$Run_Number.n, df_use$Trial_Number),]
+
+df_use_no_miss <- df_use %>%
+   filter(Reinforce_rate > .3 & Reinforce_rate < .7 & 
+          # exclude people with too many missing
+          Prop_tooslow < .5 & N_choices_resp > 15 & 
+          # exclude missed choices on the current trial, because stay/shift is meaningless for them. 
+          Effort_Choice != "Miss") %>%
+          mutate( Effort_Choice.n = ifelse(Effort_Choice == "Easy", 0, 1)) %>%
+   mutate(Trial_Number = as.numeric(as.character(Trial_Number)))
+
+# make trial 1-42 instead of 2 blocks of 21 
+df_use_no_miss$Trial_Number <- ifelse(df_use_no_miss$Run_number == "RUN1", df_use_no_miss$Trial_Number, ifelse(df_use_no_miss$Run_number == "RUN2", df_use_no_miss$Trial_Number + 21, NA))
+```
+
+## create mean centered covariates
+```{r}
+df_use_no_miss <- df_use_no_miss %>%
+  mutate (Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+          AGE.c = AGE - mean(AGE, na.rm = T), 
+          SEX.c = Sex - mean(Sex, na.rm = T), 
+          Trial_Number.c = Trial_Number - mean(Trial_Number, na.rm= T))
+
+```
+
+## Descriptives check 
+```{r}
+summary(df_use_no_miss$Effort_Choice.n)
+
+# make a subject-specific summary of their overall choices
+df_subj <- df_use_no_miss %>%
+  group_by(SUBJECTID) %>%
+  summarize(mean_prop_hard = mean(Effort_Choice.n, na.rm = T))
+
+hist(df_subj$mean_prop_hard)
+```
+
+## mod1. choice behavior in comps only 
+main effect of trial number, hard effort decreases over time.
+```{r}
+choice_mod1 <- glmer(Effort_Choice.n ~ 
+                       Reinforce_rate + AGE.c+ SEX.c + Trial_Number + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_no_miss, GROUP.2 == 0),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod1)
+```
+
+## HUGE age x trial N interaction!
+```{r}
+choice_mod1b <- glmer(Effort_Choice.n ~ 
+                       Trial_Number.c*AGE.c + SEX.c + Reinforce_rate + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = subset(df_use_no_miss, GROUP.2 == 0),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod1b)
+```
+
+younger kids are declining in hard-effort over time, older kids stay high.
+doesn't make sense to plot raw data, because going to be 1s or 0s
+```{r}
+# get effect  df tidy
+agextrialN_effect <-  as.data.frame(effect("Trial_Number.c:AGE.c", choice_mod1b, confint=TRUE))
+agextrialN_effect$AGE <- as.factor(round(agextrialN_effect$AGE.c + mean(df_use_no_miss$AGE, na.rm = T), 1)) 
+agextrialN_effect$Trial_Number <- agextrialN_effect$Trial_Number.c + mean(df_use_no_miss$Trial_Number, na.rm = T)
+agextrialN_effect <- agextrialN_effect %>%
+  filter(AGE != "5.9" & AGE != "12.9")
+
+plot_effect <- ggplot(agextrialN_effect,aes(x = Trial_Number, y = fit)) +
+   geom_line(size = 1, aes(color = AGE)) + geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = AGE, fill = AGE), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Proportion of Hard vs. Easy Choices") + 
+  xlab ("Trial Number") + facet_grid(~AGE)+ theme(legend.position = "none")
+  
+pdf("figures/Hypothesis1_comp_agextrial_hard_choices.pdf", width = 6, height = 4)
+plot_effect
+dev.off()
+```
+
+## mod2:. choice behavior between groups (ECA vs. COMP)
+main effect of trial number, hard-effort choices decrease over time.
+```{r}
+
+choice_mod2 <- glmer(Effort_Choice.n ~ 
+                      GROUP.2 +  Reinforce_rate.c + AGE.c+ SEX.c + Trial_Number.c + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod2)
+```
+
+### age x trialN in all subs?
+yes, replicates effects in COMPS only. 
+```{r}
+
+choice_mod2b <- glmer(Effort_Choice.n ~ 
+                      GROUP.2 +  Reinforce_rate.c + Trial_Number.c*AGE.c+ SEX.c + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod2b)
+```
+
+older kids are more persistent, younger kids decrease in effort over time. 
+nearly identical results to the COMP-only sample.
+```{r}
+# get effect  df tidy
+agextrialN_effect <-  as.data.frame(effect("Trial_Number.c:AGE.c", choice_mod2b, confint=TRUE))
+agextrialN_effect$AGE <- as.factor(round(agextrialN_effect$AGE.c + mean(df_use_no_miss$AGE, na.rm = T), 1)) 
+agextrialN_effect$Trial_Number <- agextrialN_effect$Trial_Number.c + mean(df_use_no_miss$Trial_Number, na.rm = T)
+agextrialN_effect <- agextrialN_effect %>%
+  filter(AGE != "5.9" & AGE != "12.9")
+
+plot_effect <- ggplot(agextrialN_effect,aes(x = Trial_Number, y = fit)) +
+   geom_line(size = 1, aes(color = AGE)) + geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = AGE, fill = AGE), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Proportion of Hard vs. Easy Choices") + 
+  xlab ("Trial Number") + facet_grid(~AGE)+ theme(legend.position = "none")
+  
+plot_effect
+```
+
+### Age x Trial N x GROUP? No
+also model is having trouble converging! 
+
+```{r}
+choice_mod2c <- glmer(Effort_Choice.n ~ 
+                      GROUP.2 * AGE * Trial_Number.c + Reinforce_rate.c + SEX.c + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod2c)
+```
+
+plot the 3 way interaction
+```{r}
+# get effect  df tidy
+agextrialN_effect <-  as.data.frame(effect("GROUP.2:AGE:Trial_Number.c", choice_mod2c, confint=TRUE))
+agextrialN_effect$Trial_Number <- agextrialN_effect$Trial_Number.c + mean(df_use_no_miss$Trial_Number, na.rm = T)
+agextrialN_effect <- agextrialN_effect %>%
+  filter(AGE != "6" & AGE != "13") 
+agextrialN_effect
+
+plot_effect <- ggplot(agextrialN_effect,aes(x = Trial_Number, y = fit)) +
+   geom_line(size = 1, aes(group = GROUP.2, color = GROUP.2)) + geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = GROUP.2, fill = GROUP.2), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Proportion of Hard vs. Easy Choices") + 
+  xlab ("Trial Number") + facet_grid(~AGE)
+  
+pdf("figures/Hypothesis1_2group_agextrial_hard_choices.pdf", width = 6, height = 4)
+plot_effect
+dev.off()
+```
+
+
+## mod3: choice behavior by subtype (PI vs. DA vs. COMP)
+main effect of trial number! 
+```{r}
+choice_mod3 <- glmer(Effort_Choice.n ~ 
+                      GROUP.3 +  Reinforce_rate.c + AGE.c+ SEX.c + Trial_Number.c + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod3)
+```
+
+### Age x trialN - sig 
+(same thing)
+```{r}
+choice_mod3b <- glmer(Effort_Choice.n ~ 
+                      GROUP.3 +  Reinforce_rate.c + AGE.c*Trial_Number.c + SEX.c +
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod3b)
+```
+
+
+### GROUP x AGE.cx trialN 
+sig 3 way interaction!! 
+```{r}
+
+choice_mod3c <- glmer(Effort_Choice.n ~ 
+                    GROUP.3*AGE.c*Trial_Number.c + SEX.c + Reinforce_rate.c + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod3c)
+```
+
+possible interaction here but don't understand what's driving it. based on CI, looks like they really overlap.
+```{r}
+# get effect  df tidy
+agextrialN_effect <-  as.data.frame(effect("GROUP.3:AGE.c:Trial_Number.c", choice_mod3c, confint=TRUE))
+agextrialN_effect$AGE <- as.factor(round(agextrialN_effect$AGE.c + mean(df_use_no_miss$AGE, na.rm = T), 1)) 
+agextrialN_effect$Trial_Number <- agextrialN_effect$Trial_Number.c + mean(df_use_no_miss$Trial_Number, na.rm = T)
+agextrialN_effect <- agextrialN_effect %>%
+  filter(AGE != "5.9" & AGE != "12.9") %>%
+  filter(GROUP.3 != 0.5 & GROUP.3 != 1.5) %>%
+  mutate(GROUP.3 = as.factor(GROUP.3))
+agextrialN_effect
+
+plot_effect <- ggplot(agextrialN_effect,aes(x = Trial_Number, y = fit)) +
+   geom_line(size = 1, aes(group = GROUP.3, color = GROUP.3)) + geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = GROUP.3, fill = GROUP.3), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Proportion of Hard vs. Easy Choices") + 
+  xlab ("Trial Number") + facet_grid(~AGE)
+  
+plot_effect
+```
+
+## mod 4: including DCs - no group effects.
+```{r}
+choice_mod3c <- glmer(Effort_Choice.n ~ 
+                    GROUP.4 + AGE.c*Trial_Number.c + SEX.c + Reinforce_rate.c + 
+                      (1 | SUBJECTID), 
+                    family = binomial, 
+                    data = df_use_no_miss,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod3c)
+```

@@ -1,0 +1,304 @@
+---
+title: "Behavior modeling"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+notes: converting all models to BRMS on 11/27/2019
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r, warning = F, message = F}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+# Behavioral measures: Choice behavior
+notes: lmer models displayed here, brms versions run in COMP_brms_preregistration_analyses.R 
+
+## histogram of distribution
+```{r}
+#names(beh_comp_subj)
+choice_hist <- ggplot(data = beh_comp_subj, aes(x = prop_hard_choices)) + 
+  geom_histogram(bins = 10, fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab("Proportion Hard vs. Easy Choices")
+choice_hist 
+
+pdf("figures/comp_prop_hard_choices_hist.pdf", width = 2.5, height= 4)
+choice_hist
+dev.off()
+
+```
+
+
+## 1. basic model with trial number, reinforcement rate. 
+
+```{r}
+load("brms_models/preregistration_model_results/choice_mod1_brms.Rdata")
+print(choice_mod1_brms, digits = 4)
+```
+
+### fitted brms model with raw data, showing intercept > 0.5 probability 
+```{r}
+#blm_table(choice_mod1_brms, SUBJECTID)
+
+new_df <- data.frame(expand.grid( AGE.c = 0, Trial_Number.c = 0, Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(choice_mod1_brms, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(intercept = as.factor('intercept'))
+head(effect_df)
+
+
+effect_plot <- ggplot(effect_df, aes(x = intercept, y = fit)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2, fill = dark_blue)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+   geom_jitter(data = beh_comp_subj,color= dark_blue,
+       aes(x = as.factor('intercept'), y = prop_hard_choices), 
+       alpha = 0.3, width = 0.05, height =0.0) +
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("")
+effect_plot
+
+ggsave(effect_plot, file = "figures/3_basic_behavior_models/choice_intercept_different_than_0.5.pdf", height = 4, width = 2)
+```
+
+
+## 1b. Effect of Age X time? NS.
+```{r}
+load("brms_models/preregistration_model_results/choice_mod1_ageint_brms.Rdata")
+print(choice_mod1_ageint, digits = 4)
+```
+
+### plot null effects of age 
+```{r}
+# include possible ranges of AGE and TRIAL NUMBER 
+new_df <- data.frame(expand.grid(AGE.c = c(min(beh_comp_long$AGE.c), -1*sd(beh_comp_long$AGE), 0, 1*sd(beh_comp_long$AGE), max(beh_comp_long$AGE.c)),
+                                Trial_Number.c = 0, 
+                                Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(choice_mod1_brms, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(Trial_phase = as.factor(Trial_Number.c))
+
+effect_plot <- ggplot(effect_df, aes(x = AGE.c, y = fit)) +
+  geom_line(alpha = 0.2, color = dark_blue)  +
+ geom_ribbon(aes(ymin= lower, ymax= upper), fill = dark_blue, alpha = 0.2) +
+  geom_jitter(data = beh_comp_subj,color = dark_blue,
+       aes(x = AGE.c, y = prop_hard_choices), 
+       alpha = 0.3, width = 0.05, height =0.0) +
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("Age (mean-centered)") 
+effect_plot
+
+ggsave(effect_plot, file = "figures/3_basic_behavior_models/choice_NS_age.pdf", height = 4, width = 3)
+```
+
+## plot null effects of trial number
+```{r}
+# include possible ranges of AGE and TRIAL NUMBER 
+new_df <- data.frame(expand.grid(AGE.c = 0,  Trial_Number.c = c(min(beh_comp_long$Trial_Number.c), -1*sd(beh_comp_long$Trial_Number),
+                                                                0, 1*sd(beh_comp_long$Trial_Number), max(beh_comp_long$Trial_Number.c)),
+                                Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(choice_mod1_ageint, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(Trial_phase = as.factor(Trial_Number.c))
+head(effect_df)
+
+effect_plot <- ggplot(effect_df, aes(x = Trial_Number.c, y = fit)) +
+  geom_line(alpha = 0.2, color = dark_blue)  +
+ geom_ribbon(aes(ymin= lower, ymax= upper), fill = dark_blue, alpha = 0.2) +
+ # how to add individual brms estimates per subject? ranef... 
+     theme_classic() + theme(legend.position = "none") + ylim(0, 1) +
+  ylab ("Likelihood to choose hard")  + xlab ("Trial Number (mean-centered)") 
+effect_plot
+
+ggsave(effect_plot, file = "figures/3_basic_behavior_models/choice_NS_TrialNumber.pdf", height = 4, width = 3)
+```
+
+# Behavioral measures: WSLS
+## clean data to exclude 'too slow' trials
+```{r}
+summary(beh_comp_long_WSLS$Effort_Choice_prior)
+summary(beh_comp_long_WSLS$Feedback_prior)
+
+beh_comp_long_WSLS <- beh_comp_long_WSLS %>%
+  filter(Feedback_prior != "Too_slow")
+```
+
+
+## 1. modeling prior effort x prior feedback
+model with full random effects.
+main effect of effort choice, age, and proportion hard.
+```{r}
+load("brms_models/preregistration_model_results/WSLS_mod2_brms.Rdata")
+print(WSLS_mod2_brms, digits = 3)
+
+```
+
+### Figure from brms fitted model with raw data 
+showing all 4 conditions, but really only a main effect of prior effort.
+```{r}
+# load single-subj data 
+load("../../2_cleaning_QC/cleaned_data/WSLS_by_subj_condition.Rdata")
+
+new_df <- data.frame(expand.grid(Effort_Choice_prior = c("Hard", "Easy"),
+                                  Feedback_prior = c("Reward","Setback"),
+                                  AGE.c = 0, Trial_Number.c = 0, Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_mod2_brms, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy")
+
+WSLS_hard_plot <- ggplot(WSLS_hard_effect, aes(x = Feedback_prior, y = fit, fill= Feedback_prior)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+   geom_jitter(data = subset(beh_comp_subj_WSLS, Feedback_prior != "Too_slow" & Effort_Choice_prior == "Hard"),
+       aes(x = Feedback_prior, y = stay_shift, color = Feedback_prior), 
+       alpha = 0.3, width = 0.05, height =0.0) + #stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   theme_classic() + my_colors + my_colors2 +   theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard again") + xlab ("Feedback on prior trial") + ggtitle("Behavior after a hard trial") 
+
+WSLS_easy_plot <- ggplot(WSLS_easy_effect, aes(x = Feedback_prior, y = fit, fill= Feedback_prior)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+   geom_jitter(data = subset(beh_comp_subj_WSLS, Feedback_prior != "Too_slow" & Effort_Choice_prior == "Hard"),
+       aes(x = Feedback_prior, y = stay_shift, color = Feedback_prior), 
+       alpha = 0.3, width = 0.05, height =0.0) + #stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   theme_classic() + my_colors + my_colors2 +   theme(legend.position = "none") + 
+  ylab ("Likelihood to choose easy again") + xlab ("Feedback on prior trial") + ggtitle("Behavior after an easy trial") 
+combined2 <- grid.arrange(WSLS_easy_plot, WSLS_hard_plot, nrow = 1)
+
+
+ggsave(combined2, height = 4, width = 6, file = "figures/3_basic_behavior_models/WSLS_by_prior_effort_prior_feedback_brms.pdf")
+```
+
+
+## 1b. AGE x Prior effort choice: SIG
+main effect of effort choice, age, proportion hard, and effort choice x age
+```{r}
+load("brms_models/preregistration_model_results/WSLS_mod2b_brms_age_int.Rdata")
+
+print(WSLS_mod2b_brms_age_int, digits = 4)
+```
+
+### plot the interaction
+```{r}
+
+new_df <- data.frame(expand.grid(AGE.c = c(min(beh_comp_long$AGE.c), -1*sd(beh_comp_long$AGE), 0, 1*sd(beh_comp_long$AGE), max(beh_comp_long$AGE.c)),
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = c("Reward","Setback"),
+                      Trial_Number.c = 0, Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect <- fitted(WSLS_mod2b_brms_age_int, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- WSLS_effect %>% filter(Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- WSLS_effect %>% filter(Effort_Choice_prior == "Easy")
+# fix this age variable.
+beh_comp_subj_WSLS$AGE.c <- beh_comp_subj_WSLS$AGE - mean(beh_comp_subj_WSLS$AGE)
+
+WSLS_hard_plot <- ggplot(WSLS_hard_effect, aes(x = AGE.c, y = fit)) +
+  geom_line(aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.3) +
+  geom_point(data = filter(beh_comp_subj_WSLS, Effort_Choice_prior == "Hard" & Feedback_prior != "Too_slow"),
+      aes(x = AGE.c, y = stay_shift, color = Feedback_prior), alpha = 0.3) +
+   theme_classic() + my_colors + my_colors2 + ylim(0,1) +
+  ylab ("Likelihood to choose hard again") + xlab ("Age (mean-centered)") +
+   theme(legend.position = "none") + ggtitle("Behavior after a hard trial") +
+   geom_hline(aes(yintercept = 0.5), linetype = "dashed")  
+
+WSLS_easy_plot <- ggplot(WSLS_easy_effect, aes(x = AGE.c, y = fit)) +
+  geom_line(aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.3) +
+  geom_point(data = filter(beh_comp_subj_WSLS, Effort_Choice_prior == "Easy" & Feedback_prior != "Too_slow"),
+      aes(x = AGE.c, y = stay_shift, color = Feedback_prior), alpha = 0.3) +
+   theme_classic() + my_colors + my_colors2 + ylim(0,1) +
+  ylab ("Likelihood to choose easy again") + xlab ("Age (mean-centered)") +
+   theme(legend.position = "none") + ggtitle("Behavior after an easy trial") +
+   geom_hline(aes(yintercept = 0.5), linetype = "dashed")  
+
+combined <- grid.arrange(WSLS_easy_plot, WSLS_hard_plot, nrow = 1)
+
+ggsave(combined, file = "figures/3_basic_behavior_models/WSLS_by_prior_effort_X_Age.pdf", width = 6, height = 4)
+
+```
+
+
+## prior effort x Trial N: SIG
+```{r}
+load("brms_models/preregistration_model_results/WSLS_mod2c_brms_trial_int.Rdata")
+print(WSLS_mod2c_brms_trial_int, digits = 4)
+```
+
+
+### plot the interaction effect
+```{r}
+new_df <- data.frame(expand.grid(Trial_Number.c = c(min(beh_comp_long$Trial_Number.c), -1*sd(beh_comp_long$Trial_Number), 0, 1*sd(beh_comp_long$Trial_Number), max(beh_comp_long$Trial_Number.c)),
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = c("Reward","Setback"),
+                     AGE.c = 0, Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect <- fitted(WSLS_mod2c_brms_trial_int, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- WSLS_effect %>% filter(Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- WSLS_effect %>% filter(Effort_Choice_prior == "Easy")
+
+WSLS_hard_plot <- ggplot(WSLS_hard_effect, aes(x = Trial_Number.c, y = fit)) +
+  geom_line(aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.3) +
+    theme_classic() + my_colors + my_colors2 + ylim(0,1) +
+  ylab ("Likelihood to choose hard again") + xlab ("Trial (mean-centered)") +
+   theme(legend.position = "none") + ggtitle("Behavior after a hard trial") +
+   geom_hline(aes(yintercept = 0.5), linetype = "dashed")  
+
+WSLS_easy_plot <- ggplot(WSLS_easy_effect, aes(x = Trial_Number.c, y = fit)) +
+  geom_line(aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.3) +
+  # need to get random slopes from brms model to plot for each subj.
+    theme_classic() + my_colors + my_colors2 + ylim(0,1) +
+  ylab ("Likelihood to choose easy again") + xlab ("Trial (mean-centered)") +
+   theme(legend.position = "none") + ggtitle("Behavior after an easy trial") +
+   geom_hline(aes(yintercept = 0.5), linetype = "dashed")  
+
+combined <- grid.arrange(WSLS_easy_plot, WSLS_hard_plot, nrow = 1)
+ggsave(combined, file = "figures/3_basic_behavior_models/WSLS_by_trialN_X_effort_choice.pdf", width = 6, height = 4)
+
+
+```

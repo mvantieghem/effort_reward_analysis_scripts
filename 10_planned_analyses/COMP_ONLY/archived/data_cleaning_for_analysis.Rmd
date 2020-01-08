@@ -1,0 +1,409 @@
+---
+title: "Data cleaning for analysis"
+author: "Michelle.VanTieghem"
+date: "7/9/2019"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+# Set up data
+## load behavior master, which includes demographic variables 
+generated: behavior_perproc_scripts/5_merging_all_behavior.Rmd
+format: long format, by run
+```{r}
+load("../../behavioral_data/combined_behavior_master/combined_effort_ft_pt_behavior_by_run_with_demo.Rata")
+
+```
+
+## subset for comparisons only
+note: this data is by RUN which is not that useful! 
+```{r}
+beh_comp_by_run <- beh_master %>%
+  filter(PI_DA == 0) %>%
+  rename(Run_number = RunNumber, 
+         proportion_hard = N_prop_hard) %>%
+  mutate(Run_number = as.factor(ifelse(Run_number == "run1", "RUN1", "RUN2")), 
+         Run_Number.n = ifelse(Run_number == "RUN1", 1, 2))
+nrow(beh_comp_by_run)
+
+# FIXED - no more duplicated subjs!
+run_check <- beh_comp_by_run %>%
+  group_by(SUBJECTID) %>%
+  summarize(N_runs = n()) %>%
+  filter(N_runs > 2)
+run_check
+```
+
+
+
+## load in long-formatted behavioral data per subject 
+generated in behavior_perproc_scripts/1_effort_task_behavior_preproc.Rmd
+add a couple more variables 
+```{r}
+load("../../behavioral_data/3_effort_task_data/compiled/compiled_long_format_usable.Rdata")
+
+behavior_long_data <- behavior_long_data %>%
+  rename(SUBJECTID = SUB) %>%
+  # add turtle feedback! if they didn't make it to top of green bar.
+  mutate(Feedback = as.factor(ifelse(Accuracy == 0, "Too_slow",
+                                    ifelse(Accuracy == 1 & Reward_received == 1, "Reward", 
+                                           ifelse(Accuracy == 1 & Reward_received == 0, "Setback", 
+                                                  ifelse(is.na(Reward_received), NA, "fix"))))))
+# NA = missed choice, so no feedback phase.s
+summary(behavior_long_data$Feedback)
+
+# get the max that their hard task was titrated to.
+by_subj <- behavior_long_data %>%
+  group_by(SUBJECTID) %>%
+  summarize(hard_task_titration = max(max_keys, na.rm = T)) 
+#head(by_subj)
+# everyone is a 3!!! so no point in caring about easy task.
+#summary(by_subj$hard_task_titration[by_subj$Effort_Choice == "Easy"])
+# add this subject-level covariate into the long df.
+behavior_long_data <- merge(behavior_long_data, by_subj, by = "SUBJECTID")
+
+# check number of trials per subj
+trial_check <- behavior_long_data %>%
+  group_by(SUBJECTID) %>%
+  summarize(N_trials = n()) %>% 
+  filter(N_trials >42)
+
+nrow(trial_check) # none!
+```
+
+### merge into a long dataframe (by trial) 
+```{r}
+beh_comp_long <- merge(beh_comp_by_run, behavior_long_data, by = c("SUBJECTID", "Run_number"))
+nrow(beh_comp_long)
+
+# any dupliocated trials? 
+trial_check <- beh_comp_long %>%
+  group_by(SUBJECTID, Run_number) %>%
+  summarize(N_trials = n()) %>% 
+  filter(N_trials > 22)
+trial_check # none!
+
+# any duplicated runs?
+run_check <- beh_comp_by_run %>%
+  group_by(SUBJECTID) %>%
+  summarize(N_runs = n()) %>%
+  filter(N_runs > 2)
+run_check # none! 
+```
+
+
+## Set up long data for behavior analysis 
+
+### clean data 
+exclude 3 subjects with extreme reinforcement rates, too many "too slow" resps, or not enough choices.
+then exclude missed trials - but we are keeping turtle trials! 
+
+```{r}
+
+## sort the dataframe by trial
+beh_comp_long$Run_Number.n <- ifelse(beh_comp_long$Run_number == "RUN1", 1, 2)
+summary(beh_comp_long$Run_Number.n)
+
+# re-ordering the entire dataframe by Trial Number and run number! 
+beh_comp_long <- beh_comp_long[order(beh_comp_long$SUBJECTID, beh_comp_long$Run_Number.n, beh_comp_long$Trial_Number),]
+
+beh_comp_long <- beh_comp_long %>%
+   filter(Reinforce_rate > .3 & Reinforce_rate < .7 & 
+          # exclude people with too many missing
+          Prop_tooslow < .5 & N_choices_resp > 15 & 
+            # missed trials
+            Effort_Choice != "Miss") %>%
+          mutate( Effort_Choice.n = ifelse(Effort_Choice == "Easy", 0, 1))
+```
+
+
+```{r}
+
+# how many subjects excluded? NONE - because we did our code correctly in preprocessing.
+length(unique(beh_comp_long$SUBJECTID)) - length(unique(beh_comp_long$SUBJECTID))
+
+```
+
+### clean data more 
+run number and trial number variables 
+add extra covariates 
+```{r}
+beh_comp_long <- beh_comp_long %>%
+  mutate(Trial_Number = as.numeric(as.character(Trial_Number)),
+         # convert post-test from character to numeric
+         # these are all subject-level covariaces
+         hard_effort_perceived = as.numeric(hard_effort), 
+         easy_effort_perceived = as.numeric(easy_effort), 
+         fun = as.numeric(fun),
+         motivated = as.numeric(motivated),
+         sleepy = as.numeric(sleepy),
+         frustrated = as.numeric(frustrated),
+         win_feeling = as.numeric(win_feeling),
+         lose_feeling = as.numeric(lose_feeling),
+         perceived_reinforce = as.numeric(perceived_reinforce),
+         perceived_control = as.numeric(perceived_control),
+         # calculate these trial-by-trial covariates
+         # keycount: don't need to calculate!! 
+         overshoot = key_count - max_keys) %>%
+  # rename motor variables - subject level covariates.
+  rename(motor_skills_easy = median_RT_thumb, 
+         motor_skills_hard = median_RT_ring,
+         IQ = WASI_FSIQ)
+
+# make trial 1-42 instead of 2 blocks of 21 
+beh_comp_long$Trial_Number_all <- ifelse(beh_comp_long$Run_number == "RUN1", beh_comp_long$Trial_Number, ifelse(beh_comp_long$Run_number == "RUN2", beh_comp_long$Trial_Number + 21, NA))
+```
+
+
+### create mean centered covariates
+```{r}
+beh_comp_long <- beh_comp_long %>%
+  mutate (Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+          Reinforce_easy.c = Reinforce_easy - mean(Reinforce_easy, na.rm = T), 
+          Reinforce_hard.c = Reinforce_hard - mean(Reinforce_hard, na.rm = T), 
+          AGE.c = AGE - mean(AGE, na.rm = T), 
+          SEX.c = SEX - mean(SEX, na.rm = T), 
+          Trial_Number.c = Trial_Number - mean(Trial_Number, na.rm= T), 
+          proportion_hard.c = proportion_hard - mean(proportion_hard), 
+          IQ.c = IQ - mean(IQ, na.rm = T))
+
+
+```
+
+## make WSLS dataset (separate from regular)
+add WSLS variables, shifted to prior trial
+using the entire dataset, including misses...
+NOTE: this excludes the first trial of each run because the prior trial is NA. 
+```{r}
+# make a copy of the dataset, remove all of the first trials, and mark them as 100 to keep out of place.
+df_copy2 <- beh_comp_long %>%
+  # making a copy that adds 1 to trial number
+  mutate(Trial_Number = Trial_Number + 1) %>%
+  # so effort choice prior for trial 2 represents the effort choice from trial 1 
+  select(SUBJECTID, Run_number, Trial_Number, Effort_Choice, Feedback) %>%
+  rename(Effort_Choice_prior = Effort_Choice, 
+         Feedback_prior = Feedback) 
+
+# now re-sort the data, so that all trials are shifted up 1 place. 
+df_copy2 <- df_copy2[order(df_copy2$SUBJECTID, df_copy2$Run_number, df_copy2$Trial_Number),]
+
+# now merge this new thing with orig data, by sub, run, and Trial_Number! 
+beh_comp_long_WSLS <- merge(beh_comp_long, df_copy2, by = c("SUBJECTID", "Run_number", "Trial_Number"), all = T) %>%
+  # exclude the first trial of each run because the prior trial is NA.
+  filter(!is.na(Effort_Choice) & Trial_Number != 1) %>% 
+## calculate stay-shift variables, 1 = stay, 0 = shift
+  ## don't count missed choices for current or prior trial! 
+  mutate(stay_shift = ifelse(Effort_Choice == "Miss" | Effort_Choice_prior == "Miss", NA, 
+                             ifelse(Effort_Choice == Effort_Choice_prior, 1, 0)),
+         # making a new variable that counts turtles as setbacks.
+         Feedback_prior_inclturtle = as.factor(ifelse(Feedback_prior == "Too_slow", "Setback", as.character(Feedback_prior)))) %>%
+  filter(Effort_Choice_prior != "Miss")
+```
+
+### sanity check for WSLS variables
+```{r}
+# NA = choices that were missed for current or prior trial - excluding both!! 
+summary(as.factor(beh_comp_long_WSLS$stay_shift)) 
+
+# missed choices are coded here, just making sure formatted correctly.
+summary(as.factor(beh_comp_long_WSLS$Effort_Choice_prior)) 
+
+# NA = choices that were missed, keeping too slow as a separate level.
+summary(as.factor(beh_comp_long_WSLS$Feedback_prior)) 
+
+# NA = choices that were missed, too slow feedback was counted as setback
+summary(as.factor(beh_comp_long_WSLS$Feedback_prior_inclturtle)) 
+
+
+```
+
+
+## Make subject-level dataframe
+```{r}
+summary(beh_comp_long$Effort_Choice.n)
+
+# make a subject-specific summary of their overall choices
+beh_comp_subj <- beh_comp_long %>%
+  group_by(SUBJECTID) %>%
+  summarize(SEX = mean(SEX), 
+            AGE = mean(AGE, na.rm = T),
+            IQ = mean(IQ, na.rm = T),
+            Fam_inc_needs = mean(INC_ITN_HOUSE, na.rm = T),
+            N_trials = n(), 
+            prop_hard_choices = mean(Effort_Choice.n, na.rm = T),
+            Reinforce_rate  = mean(Reinforce_rate, na.rm = T), # MEAN
+            Reinforce_hard = mean(Reinforce_hard, na.rm = T),
+            Reinforce_easy = mean(Reinforce_easy, na.rm = T),
+            perceived_reinforce  = mean(perceived_reinforce, na.rm = T), # post-test
+            perceived_control  = mean(perceived_control, na.rm = T), # post-test
+            hard_effort_perceived  = mean(hard_effort_perceived, na.rm = T), # post-test
+            easy_effort_perceived  = mean(easy_effort_perceived, na.rm = T),# post-test
+            motor_skills_easy  = mean(motor_skills_easy, na.rm = T), # median RT from finger tapping thumb
+            motor_skills_hard = mean(motor_skills_hard, na.rm = T), # median RT from finger tapping ring
+          #  max_keys_easy = mean(max_keys_easy, na.rm = T),# removing, because it's always 3! never changes.
+            hard_task_titration = mean(hard_task_titration, na.rm = T),
+          fun = mean(fun, na.rm = T),
+          motivated = mean(motivated, na.rm = T), 
+          sleepy = mean(sleepy, na.rm = T), 
+          frustrated = mean(frustrated, na.rm = T), 
+          win_feeling = mean(win_feeling, na.rm = T), 
+          lose_feeling = mean(lose_feeling, na.rm = T))  # task titration
+
+# make one for WSLS too 
+# make a subject-specific summary for WSLS - so grouped by feedback X effort! 
+beh_comp_subj_WSLS <- beh_comp_long_WSLS %>%
+  group_by(SUBJECTID, Feedback_prior, Effort_Choice_prior) %>%
+  summarize(SEX = mean(SEX), 
+            AGE = mean(AGE, na.rm = T),
+            IQ = mean(IQ, na.rm = T),
+            Fam_inc_needs = mean(INC_ITN_HOUSE, na.rm = T),
+           N_trials = n(),
+            stay_shift = mean(stay_shift, na.rm = T),
+            prop_hard_choices = mean(Effort_Choice.n, na.rm = T),
+            Reinforce_rate  = mean(Reinforce_rate, na.rm = T), # MEAN
+            Reinforce_hard = mean(Reinforce_hard, na.rm = T),
+            Reinforce_easy = mean(Reinforce_easy, na.rm = T),
+            perceived_reinforce  = mean(perceived_reinforce, na.rm = T), # post-test
+            perceived_control  = mean(perceived_control, na.rm = T), # post-test
+            hard_effort_perceived  = mean(hard_effort_perceived, na.rm = T), # post-test
+            easy_effort_perceived  = mean(easy_effort_perceived, na.rm = T),# post-test
+            motor_skills_easy  = mean(motor_skills_easy, na.rm = T), # median RT from finger tapping thumb
+            motor_skills_hard = mean(motor_skills_hard, na.rm = T), # median RT from finger tapping ring
+          #  max_keys_easy = mean(max_keys_easy, na.rm = T),# removing, because it's always 3! never changes.
+            hard_task_titration = mean(hard_task_titration, na.rm = T),
+          fun = mean(fun, na.rm = T),
+          motivated = mean(motivated, na.rm = T), 
+          sleepy = mean(sleepy, na.rm = T), 
+          frustrated = mean(frustrated, na.rm = T), 
+          win_feeling = mean(win_feeling, na.rm = T), 
+          lose_feeling = mean(lose_feeling, na.rm = T))  # task titration
+```
+
+
+### save this behavioral data 
+```{r}
+save(beh_comp_subj, file = "cleaned_data_for_analysis/beh_comp_subj.Rdata")
+nrow(beh_comp_subj)
+save(beh_comp_long, file = "cleaned_data_for_analysis/beh_comp_long.Rdata")
+
+save(beh_comp_subj_WSLS, file = "cleaned_data_for_analysis/beh_comp_subj_WSLS.Rdata")
+save(beh_comp_long_WSLS, file = "cleaned_data_for_analysis/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+
+## Set up brain data
+
+### load betas from FSL pipeline
+```{r}
+path <- "../../FSL_pipeline/5.activation_group_level/collapsed_EVs/ROI_results/pulled_betas/N121/"
+
+sublist <- read.table("../../Sublists/group_level/sublist_N121_2019-07-22.txt", header = T)
+
+cope_files <- list.files(path) 
+
+cope_df <- data.frame(SUBJECTID = sublist)
+nrow(cope_df)
+
+for (file in cope_files){
+  #print(file)
+   df <- read.table(paste0(path, file))
+   names(df) <- substr(file, 6, nchar(file) - 6)
+   cope_df <- cbind(cope_df, df)
+}
+names(cope_df)
+cope_df <- cope_df %>%
+  select(-contains("Accumbens")) %>% # removing acumbens because using VS
+  rename(choice_ACC = choice_choice_ACC, 
+         choice_mPFC = choice_choice_mPFC,
+         choice_VS = choice_Ventral_Striatum_50thr_bin, 
+         # rewards
+         reward_mPFC = reward_FB_mPFC, 
+         reward_vmPFC = reward_FB_vmPFC, 
+         reward_VS = reward_Ventral_Striatum_50thr_bin,
+        # setbacks
+         setback_mPFC = setback_FB_mPFC, 
+         setback_vmPFC = setback_FB_vmPFC, 
+         setback_VS = setback_Ventral_Striatum_50thr_bin, 
+        # reward - setback
+          reward_setback_mPFC = reward_setback_FB_mPFC, 
+         reward_setback_vmPFC = reward_setback_FB_vmPFC,
+         reward_setback_VS = reward_setback_Ventral_Striatum_50thr_bin) %>%
+mutate( choice_Amyg = (choice_Right_Amygdala_50thr_bin + choice_Left_Amygdala_50thr_bin) /2, 
+         reward_Amyg = (reward_Right_Amygdala_50thr_bin + reward_Left_Amygdala_50thr_bin)/2, 
+         setback_Amyg = (setback_Right_Amygdala_50thr_bin + setback_Left_Amygdala_50thr_bin)/2, 
+         reward_setback_Amyg = (reward_setback_Right_Amygdala_50thr_bin + reward_setback_Left_Amygdala_50thr_bin)/2) 
+
+```
+
+
+### load data from progress report QC 
+note: we have betas for 125 participants, but only including 123! 
+```{R}
+
+load("../../behavior_preproc_scripts/progress_report_QC/all_data_QC_and_demographics2019-07-17.Rdata")
+df_scan_usable <- df_wide %>% 
+  filter(scan_and_behavior_usable != 0) %>%
+  select(SUBJECTID)
+nrow(df_scan_usable) # 121
+
+# only keep people in this usable list!! 
+cope_df2 <- merge(cope_df, df_scan_usable, by = "SUBJECTID")
+nrow(cope_df2)
+```
+
+### add motion!
+```{r}
+load("../../FSL_pipeline/1.motion_assess/compiled_motion_info_2019-04-10.Rdata")
+motion_df <- merged_df %>%
+  group_by(SUBJECTID) %>%
+  summarize(total_TRs_censored = sum(censored_TRs, na.rm = T), 
+            meanFD_included_trs = mean(meanFD_included_trs, na.rm = T), 
+            meanFD_all_trs = mean(meanFD_all_trs, na.rm = T))
+
+cope_df <- merge(cope_df2, motion_df, by = "SUBJECTID")
+nrow(cope_df)
+```
+
+
+## combine behavior and scan data (wide & long)
+
+###  BEH + SCAN WIDE DATA 
+two versions: regular behavior and WSLS behavior
+make sure only including comparisons here! comparisons includes DC, excludes PI or DA.
+
+```{r}
+beh_scan_comp_wide <- merge(beh_comp_subj, cope_df, by = "SUBJECTID")
+nrow(beh_scan_comp_wide)
+nrow(beh_comp_subj)
+save(beh_scan_comp_wide, file = "cleaned_data_for_analysis/beh_scan_comp_wide.Rdata")
+
+beh_scan_comp_wide_WSLS <- merge(beh_comp_subj_WSLS, cope_df, by = "SUBJECTID")
+save(beh_scan_comp_wide_WSLS, file = "cleaned_data_for_analysis/beh_scan_comp_wide_WSLS.Rdata")
+
+```
+
+
+###  BEH + SCAN LONG DATA 
+two versions: regular behavior and WSLS behavior
+```{r}
+beh_scan_comp_long <- merge(beh_comp_long, cope_df, by = "SUBJECTID")
+save(beh_scan_comp_long, file = "cleaned_data_for_analysis/beh_scan_comp_long.Rdata")
+    
+beh_scan_comp_long_WSLS <- merge(beh_comp_long_WSLS, cope_df, by = "SUBJECTID")
+save(beh_scan_comp_long_WSLS, file = "cleaned_data_for_analysis/beh_scan_comp_long_WSLS.Rdata")
+
+```

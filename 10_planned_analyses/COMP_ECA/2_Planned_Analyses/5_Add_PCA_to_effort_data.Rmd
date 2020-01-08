@@ -1,0 +1,216 @@
+---
+title: "Adding PCA to effort data"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+#TO DO:
+use tidy(model) as the output printing! 
+add invlogit() to your coefficients to get predicted probabilities of the choices. 
+check whether the effect package is correctly displaying probability vs. logit thing.
+could use predict() instead, like the brms version.
+
+# Notes 
+## group coding explanations:
+PI_DA = self-created variable for adopted vs. not: used for COMP paper as sample \
+Recruitment_group = 6 updated groups from master in August 2019
+GROUP = COMP = C from recruitment group, ECA = any adversity (DC, IFC, DA, PI)
+IDENT_SUBTYPE_CODED = old GROUP from master in June, don't use it.
+
+
+
+```{r, include = F, warning = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R", echo=F)
+```
+
+# Load data 
+```{r}
+load("../../../9_combine_brain_beh_data/cleaned_data/COMP_ECA/all_pacct_effort_data.Rda")
+```
+
+
+## add most updated cruitment group designations from october 2019
+```{r}
+master <- read_excel("../../../../subj_demo/masters/MASTER_20191118_updated_MICM.xlsx") 
+
+demo <- master %>%
+  dplyr::select(IDENT_SUBID, GROUP) %>%
+  mutate(SUBJECTID = substr(IDENT_SUBID, 1, 5), 
+         GROUP_ECA = as.factor(ifelse(GROUP == "C", "COMP", "ECA")))
+```
+
+## add full sample PC1 scores to datasets
+check missing data, because PCA scores noto available for some subjects
+```{r}
+#load('model_results/PCA/bootstrapPCASubjectLoadings.Rdata') # not using bootstrappeds cores for now.
+load("output/pcaFullSampleScoresWithLabels.rda")
+
+nrow(pacctPCAscores) 
+names(pacctPCAscores)
+
+# 10 subjects have scan but don't have PCA - because they don't have TESI. 
+sum(!beh_scan_ECA_wide$SUBJECTID %in% pacctPCAscores$SUBJECTID)
+
+# 45 subjects have PCA but don't have scan  
+sum(!pacctPCAscores$SUBJECTID %in% beh_scan_ECA_wide$SUBJECTID)
+
+
+```
+
+
+## PC1 & PC 2 
+check normality.
+```{r}
+
+min_boot <- min(pacctPCAscores$BootstrapPC1)
+hist(pacctPCAscores$BootstrapPC1)
+hist(pacctPCAscores$BootstrapPC1)
+hist(sqrt(pacctPCAscores$BootstrapPC1 - min_boot))
+# log version needs to add a positive value, because all of the COMPS = 0
+hist(log(pacctPCAscores$BootstrapPC1 - min_boot + 1))
+```
+
+
+```{r}
+min_boot <- min(pacctPCAscores$BootstrapPC2)
+hist(pacctPCAscores$BootstrapPC2)
+hist(sqrt(pacctPCAscores$BootstrapPC2 - min_boot + 1))
+#log(sqrt(pacctPCAscores$BootstrapPC2 - min_boot + 1))
+
+shapiro.test(pacctPCAscores$BootstrapPC2)
+shapiro.test(sqrt(pacctPCAscores$BootstrapPC2))
+```
+
+
+### transform variable
+no matter what you do,never going to be normal.
+```{r}
+
+shapiro.test(pacctPCAscores$BootstrapPC1)
+# these are both bad, but better.
+shapiro.test(log(pacctPCAscores$BootstrapPC1 - min_boot + 1))
+shapiro.test(sqrt(pacctPCAscores$BootstrapPC1- min_boot + 1))
+
+PCA_scores <- pacctPCAscores %>%
+  dplyr::select(SUBJECTID, BootstrapPC1, BootstrapPC2, starts_with("CBCL")) %>%
+  rename(PC1 = BootstrapPC1,
+         PC2 = BootstrapPC2) %>%
+  mutate(PC1_sqrt = sqrt(PC1 - min_boot), 
+         PC1_log = log(PC1 - min_boot + 1), 
+         PC2_sqrt = sqrt(PC2 - min_boot), 
+         PC2_log = log(PC2 - min_boot + 1))
+
+```
+
+```{r}
+# merge with all the data 
+beh_ECA_wide <- merge(beh_ECA_wide, PCA_scores, by = "SUBJECTID", all = T)  %>%
+  merge(., demo, by = "SUBJECTID")
+
+beh_ECA_wide_WSLS <- merge(beh_ECA_wide_WSLS, PCA_scores, by = "SUBJECTID") %>%
+  merge(., demo, by = "SUBJECTID")
+
+beh_ECA_long <- merge(beh_ECA_long, PCA_scores, by = "SUBJECTID") %>%
+  merge(., demo, by = "SUBJECTID")
+
+beh_ECA_long_WSLS <- merge(beh_ECA_long_WSLS, PCA_scores, by = "SUBJECTID")%>%
+  merge(., demo, by = "SUBJECTID")
+
+# scanning data 
+beh_scan_ECA_wide <- merge(beh_scan_ECA_wide, PCA_scores, by = "SUBJECTID") %>%
+  merge(., demo, by = "SUBJECTID")
+nrow(beh_scan_ECA_wide)
+
+beh_scan_ECA_wide_WSLS <- merge(beh_scan_ECA_wide_WSLS, PCA_scores, by = "SUBJECTID") %>%
+  merge(., demo, by = "SUBJECTID")
+
+beh_scan_ECA_long <- merge(beh_scan_ECA_long, PCA_scores, by = "SUBJECTID") %>%
+  merge(.,
+        demo, by = "SUBJECTID")
+beh_scan_ECA_long_WSLS <- merge(beh_scan_ECA_long_WSLS, PCA_scores, by = "SUBJECTID")%>%
+  merge(., demo, by = "SUBJECTID")
+
+## save all of it as rda file!! 
+save(beh_ECA_wide, beh_ECA_wide_WSLS, beh_ECA_long, beh_ECA_long_WSLS, 
+     beh_scan_ECA_wide, beh_scan_ECA_wide_WSLS, beh_scan_ECA_long, beh_scan_ECA_long_WSLS, 
+     file = "data/all_pacct_effort_data_with_PCA.rda")
+```
+
+
+## compare GROUPS with PC1
+### calculate missing PC1 by recruitment group.
+these are subjects who are missing TESI variables. 
+```{r}
+
+PC1_table <- beh_ECA_wide %>%
+  filter(!is.na(Recruitment_group)) %>%
+  group_by(Recruitment_group) %>%
+  dplyr::summarize(total_n = n(),
+            has_PC1 = sum(!is.na(PC1_sqrt)),
+            no_PC1 = sum(is.na(PC1_sqrt)))
+
+PC1_table
+
+# now remove the people who don't have PC1
+beh_ECA_wide <- beh_ECA_wide %>%
+  filter(!is.na(PC1_sqrt))
+```
+
+
+# Plots of PC1 and group(s)
+COMP vs. any adversity 
+```{r}
+
+ggplot(beh_ECA_wide, aes(x = GROUP_ECA, y = PC1_log)) + 
+  geom_boxplot() + theme_classic()+ geom_jitter(alpha = 0.5, width = 0.05)
+
+```
+
+with bio parent vs. adopted 
+```{r}
+ggplot(beh_ECA_wide, aes(x = as.factor(PI_DA), y = PC1_log)) + 
+  geom_boxplot() + theme_classic() + geom_jitter(alpha = 0.5, width = 0.05)
+
+```
+
+recruitment groups 
+```{r}
+ggplot(beh_ECA_wide, aes(x = Recruitment_group, y = PC1_log)) + 
+  geom_boxplot() + theme_classic()+ geom_jitter(alpha = 0.5, width = 0.05)
+
+```
+
+## plots of PC2 
+
+COMP vs. any adversity 
+```{r}
+
+ggplot(beh_ECA_wide, aes(x = GROUP_ECA, y = PC2)) + 
+  geom_boxplot() + theme_classic()+ geom_jitter(alpha = 0.5, width = 0.05)
+
+```
+
+
+
+with bio parent vs. adopted 
+```{r}
+ggplot(beh_ECA_wide, aes(x = as.factor(PI_DA), y = PC2)) + 
+  geom_boxplot() + theme_classic() + geom_jitter(alpha = 0.5, width = 0.05)
+
+```
+
+
+```{r}
+ggplot(beh_ECA_wide, aes(x = Recruitment_group, y = PC2)) + 
+  geom_boxplot() + theme_classic()+ geom_jitter(alpha = 0.5, width = 0.05)
+
+```

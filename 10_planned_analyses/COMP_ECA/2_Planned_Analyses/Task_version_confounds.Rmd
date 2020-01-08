@@ -1,0 +1,209 @@
+---
+title: "Task version effects on behavior and RT"
+author: "Michelle.VanTieghem"
+date: "Dec 4, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+# notes 
+Dec 1 2019: updated with new MICM variables and using PC1_log instead of sqrt.
+
+# confound: 
+behavior varies by task version, so only including usable scan participants who were guaranteed to perform the task in scanner for both runs.
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R")
+```
+
+
+```{r}
+# load all data with PCA added!
+load("../1_PCA/data/all_pacct_effort_data_with_PCA.rda")
+``` 
+
+# Figuring out versions
+
+## who did which run in the scanner vs. outside the scanner...
+```{r}
+scanner_sublist <- beh_scan_ECA_long %>%
+  select(SUBJECTID, RunNumber)
+# check that PA255 is added once you add it! 
+sum(scanner_sublist$SUBJECTID =="PA255")
+beh_ECA_long$scanner <- NA
+
+beh_ECA_long <- beh_ECA_long %>% 
+ mutate(scanner = as.factor(ifelse(SUBJECTID %in% scanner_sublist$SUBJECTID & 
+                                      RunNumber %in% scanner_sublist$RunNumber, "inside", "outside")))
+summary(beh_ECA_long$scanner)
+
+beh_ECA_wide <- beh_ECA_wide %>% 
+ mutate(scanner = as.factor(ifelse(SUBJECTID %in% scanner_sublist$SUBJECTID, "inside", "outside")))
+summary(beh_ECA_wide$scanner)
+
+```
+
+less useful: whether the task version had "external keyboard" in the name
+which applies to some, but not all, subjects who did the task in the mock scan room computer.
+```{r}
+
+beh_ECA_long <- beh_ECA_long %>%
+  mutate(computer = as.factor(ifelse(computer == "inside scanner", "scanner", "mock")))
+summary(beh_ECA_long$computer)
+
+beh_ECA_wide <- beh_ECA_wide %>%
+  mutate(computer = as.factor(ifelse(computer == "inside scanner", "scanner", "mock")))
+summary(beh_ECA_wide$computer)
+
+```
+
+## logical assumption: combine computer variable with scanner
+if not in completed scanner, and not on external keyboard, completed with regular computer keyboard on scanner laptop. so we have 3 different behavior version types, 
+BUT really not *positive* if people who didn't use external keyboard version culd have still plugged external keyboard into the scanner laptop. 
+```{r}
+beh_ECA_long <- beh_ECA_long %>%
+  mutate(keyboard_version = as.factor(ifelse(scanner == "inside", "scanner buttonbox", 
+                                   ifelse(scanner == "outside" & computer == "mock", 
+                                          "external keyboard", "computer keyboard"))))
+
+summary(beh_ECA_long$keyboard_version)
+
+beh_ECA_wide <- beh_ECA_wide %>%
+  mutate(keyboard_version = as.factor(ifelse(scanner == "inside", "scanner buttonbox", 
+                                   ifelse(scanner == "outside" & computer == "mock", 
+                                          "external keyboard", "computer keyboard"))))
+
+summary(beh_ECA_wide$keyboard_version)
+```
+
+## SAVE THIS OUT  FORR USING IN ANALYESS
+```{r}
+
+task_confound_df <- beh_ECA_wide %>%
+  select(SUBJECTID, keyboard_version, computer, scanner)
+save(task_confound_df, file = "data/task_confound_df.Rdata")
+
+```
+
+# Effort choice behavior 
+
+## keyboard version: VERY sig effects
+```{r}
+choice_mod_keyversion <- glmer(Effort_Choice.n ~ keyboard_version + Trial_Number.c +
+                       AGE.c + SEX.c + Reinforce_rate.c + 
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = beh_ECA_long,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod_keyversion)
+library(car)
+Anova(choice_mod_keyversion, type = "III")
+
+```
+
+```{r}
+effect_df <- data.frame(effect("keyboard_version", choice_mod_keyversion))
+
+effect_plot<- ggplot(effect_df, aes(x = keyboard_version, y = fit)) + 
+  geom_point(color = "red", size = 2) + 
+  geom_errorbar(aes(ymin = lower, ymax= upper), width = .3) + 
+  geom_jitter(data = beh_ECA_wide, aes(x = keyboard_version, y = prop_hard_choices),
+             alpha = 0.5, width = .1, height = 0.05) + 
+   theme_classic() + ylab("Proportion of Hard Choices") + ylim(0, 1.3)
+effect_plot
+
+ggsave(effect_plot, file = "figures/Task_version_confound/keyboard_effects_on_effort_choices.pdf")
+```
+
+## check differences by scanner only - inside vs. outisde
+
+```{r}
+
+choice_mod_scanner <- glmer(Effort_Choice.n ~ scanner + Trial_Number.c +
+                       AGE.c + SEX.c + Reinforce_rate.c + 
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = beh_ECA_long,
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mod_scanner)
+
+```
+
+
+```{r}
+effect_df <- data.frame(effect("scanner", choice_mod_scanner))
+
+effect_plot<- ggplot(effect_df, aes(x = scanner, y = fit)) + 
+  geom_point(color = "red", size = 2) + 
+  geom_errorbar(aes(ymin = lower, ymax= upper), width = .3) + 
+  geom_jitter(data = beh_ECA_wide, aes(x = scanner, y = prop_hard_choices),
+             alpha = 0.5, width = .1, height = 0.05) + 
+   theme_classic() + ylab("Proportion of Hard Choices") + ylim(0, 1.3)
+effect_plot
+
+ggsave(effect_plot, file = "figures/task_version_confound/Scanner_effects_on_effort_choice.pdf")
+```
+
+# Choice Reaction Time 
+
+## keyboard version: SIG effects! 
+```{r}
+
+beh_ECA_long$Effort_Choice.n <- as.factor(beh_ECA_long$Effort_Choice.n)
+
+choice_RT_mod_keyversion <- lmer(key_resp_choice.rt ~ keyboard_version * Effort_Choice.n +
+                                 Trial_Number.c + AGE.c + SEX.c + Reinforce_rate.c +  #
+                      (1 | SUBJECTID), 
+                    data = beh_ECA_long)
+summary(choice_RT_mod_keyversion)
+Anova(choice_RT_mod_keyversion, type = "III")
+```
+
+the effect of hard vs. easy is WAY more obvious in the scanner.
+```{r}
+effect_df <- data.frame(effect("keyboard_version:Effort_Choice.n", choice_RT_mod_keyversion))
+
+effect_plot<- ggplot(effect_df, aes(x = Effort_Choice.n, y = fit)) + 
+  geom_point(color = "red", size = 2) + 
+  geom_errorbar(aes(ymin = lower, ymax= upper), width = .3) +
+   theme_classic() + ylab("Choice Reaction Time") + facet_grid(~keyboard_version) + 
+  xlab("Effort Choice, 0 = Easy, 1 = Hard")
+effect_plot
+
+ggsave(effect_plot, file = "figures/task_version_confound/keyboard_version_effects_on_choice_RT.pdf")
+```
+
+
+## significant scanner x effort choice RT 
+```{r}
+choice_RT_mod_scanner <- lmer(key_resp_choice.rt ~ scanner*Effort_Choice.n +
+                             Trial_Number.c +
+                       AGE.c + SEX.c + Reinforce_rate.c +  #
+                      (1 | SUBJECTID), 
+                    data = beh_ECA_long)
+summary(choice_RT_mod_scanner)
+```
+
+
+opposite effects for hard task... slower inside scanner, faster outside scanner.
+```{r}
+effect_df <- data.frame(effect("scanner:Effort_Choice.n", choice_RT_mod_scanner))
+
+effect_plot<- ggplot(effect_df, aes(x = Effort_Choice.n, y = fit)) + 
+  geom_point(color = "red", size = 2) + 
+  geom_errorbar(aes(ymin = lower, ymax= upper), width = .3) +
+   theme_classic() + ylab("Choice Reaction Time") + facet_grid(~scanner) + 
+  xlab("Effort Choice, 0 = Easy, 1 = Hard")
+effect_plot
+
+ggsave(effect_plot, file = "figures/Task_version_confound/keyboard_version_effects_on_choice_RT.pdf")
+
+
+ggsave(effect_plot, file = "figures/task_version_confound/Scanner_effects_on_choice_RT.pdf")
+```

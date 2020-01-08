@@ -1,0 +1,74 @@
+---
+title: "2_PCA_matching"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup for PCA Matching Algorithm
+
+```{r}
+# Load in PCA fit to the full sample/extract loadings
+load(file="output/pcaFullSample.rda")
+loadings<-pcaFullSample[[2]]
+
+# Set number of PCs to match (10)
+match_PCs<-10
+sub_loadings<-loadings[,1:match_PCs]
+  
+# Initialize lists for the loadings, eigenvalues, and subject-level predictions for each bootstrap
+pca_matching_loadings <-list()
+pca_matching_eig <-list()
+pca_matching_preds <-list()
+
+# Load in the the bootstrapped PCAs 
+load(file = 'output/pcaBootstrap.rda')
+```
+
+# Run PCA Matching Algorithm
+
+For each bootstrap, match each of the 1st 10 PCs from the bootstrap to which every PC they are most similar to in the original PCA fit to the full sample. 
+
+```{r}
+for (k in 1:nrow(bootFrame)){
+  bootstrap_loadings<-bootFrame$loadings[[k]]
+  bootstrap_eig = bootFrame$eigMat[[k]]
+  bootstrap_preds = bootFrame$subPreds[[k]]
+
+  # make a correlation matrix of full sample loadings and bootstrapped loadings (dims 1-matchPCs)
+  boot_sub_loadings<-bootstrap_loadings[,1:match_PCs]
+  loadings_mat<-cbind(sub_loadings,boot_sub_loadings)
+  cormat<-cor(loadings_mat, method='pearson')
+  
+  # Just pull correlations of bootstrap sample with full sample (not bootstrap-bootstrap, or full-full)
+  submat1<-cormat[(match_PCs+1):(match_PCs*2),1:match_PCs]
+  
+  
+  # Match by the highest correlation
+  # Iterating across columns (the bootstrap PCs to find the best row match (the full sample PCs))
+  i<-1
+  orderVector<-vector()
+  for (i in (1:match_PCs)){
+    var<- which.max(submat1[,i]) #which max row for column i
+    submat1[var,]<- -2 # set the matching row to -2 so no other boot PCs will be matched with it
+    orderVector<-c(orderVector,var)
+  }
+  
+  # Reorganize the dimensions for loadings, eigenvalues, and subject predictions based on matched PCs
+  reorg_boot<-boot_sub_loadings[,c(orderVector)]
+  reorg_boot_eig = bootstrap_eig[c(orderVector),]
+  reorg_boot_preds = bootstrap_preds[,c(orderVector)]
+  
+  # Save into output list
+  pca_matching_loadings[[k]]<-reorg_boot
+  pca_matching_eig[[k]] = reorg_boot_eig
+  pca_matching_preds[[k]] = reorg_boot_preds
+}
+
+save(pca_matching_loadings, pca_matching_eig, pca_matching_preds,file="output/matched_pca.rda")
+```

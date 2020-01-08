@@ -1,0 +1,181 @@
+---
+title: "mPFC choice and amyg rewards, perceived reinfrcement, behavior"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# load data 
+```{r}
+# load all data with PCA added!
+source("../../../0_R_analysis_setup_file.R", echo=F)
+load("data/all_pacct_effort_data_with_PCA.rda")
+library(mediation)
+```
+
+## get outliers for ROI contrasts of interest
+```{r}
+load("tables/Feedback_betas_outlier_subjects.Rdata")
+outlier_remove <- FB_outlier_subjects %>%
+  filter(ROI == "Amyg" & contrast == "reward")
+
+load("tables/Choice_betas_outlier_subjects.Rdata")
+outlier_remove2 <- choice_outlier_subjects %>%
+  filter(ROI == "mPFC")
+
+```
+
+## reformat data and remove nas
+```{r}
+ 
+beh_scan_ECA_wide2 <- beh_scan_ECA_wide %>%
+  dplyr::select(SUBJECTID, GROUP_ECA, PC1_log,  AGE.c, SEX.c, 
+                Fam_inc_needs, IQ, 
+         perceived_effort_ave, 
+         perceived_reinforce, Reinforce_rate,
+         perceived_control, 
+         win_feeling, lose_feeling, 
+         motivated, frustrated,
+        median_motor_RT_ave, 
+        setback_Amyg, reward_Amyg,
+        setback_vmPFC, reward_vmPFC, 
+        total_TRs_censored, 
+        choice_choice_mPFC, 
+        prop_hard_choices, 
+        N_trials) %>%
+  mutate(diff_pos_affect = win_feeling - lose_feeling) %>%
+  # remove outliers! 
+ # filter(!SUBJECTID %in% outlier_remove$SUBJECTID) %>%
+#  filter(!SUBJECTID %in% outlier_remove2$SUBJECTID) %>%
+  na.omit() 
+
+nrow(beh_scan_ECA_wide2)
+```
+
+## reformat WSLS data
+```{r}
+beh_scan_ECA_wide_WSLS2 <- beh_scan_ECA_wide_WSLS %>%
+    dplyr::select(SUBJECTID, GROUP_ECA, PC1_log,  AGE.c, SEX.c, 
+                Fam_inc_needs, IQ, 
+         perceived_effort_ave, 
+         perceived_reinforce, Reinforce_rate,
+         perceived_control, 
+         win_feeling, lose_feeling, 
+         motivated, frustrated,
+        median_motor_RT_ave, 
+        setback_Amyg, reward_Amyg,
+        setback_vmPFC, reward_vmPFC, 
+        total_TRs_censored, 
+        choice_choice_mPFC, 
+        stay_shift, 
+        N_trials, 
+        Feedback_prior, Effort_Choice_prior)%>%
+  mutate(diff_pos_affect = win_feeling - lose_feeling) %>%
+  # remove missed feedback
+  filter(Feedback_prior != "Too_slow") %>%
+  
+  # remove outliers! 
+  filter(!SUBJECTID %in% outlier_remove$SUBJECTID) %>%
+  filter(!SUBJECTID %in% outlier_remove2$SUBJECTID) %>%
+  na.omit() 
+  
+nrow(beh_scan_ECA_wide_WSLS2)
+
+beh_scan_ECA_wide_WSLS2 %>%
+  group_by(Effort_Choice_prior, Feedback_prior) %>%
+  dplyr::summarize(mean(stay_shift))
+
+```
+
+
+## make a WSLS dataset: setbacks only, collapsed harrd & easy
+need 1 row per subj
+```{r}
+beh_scan_ECA_wide_WSLS_FB <- beh_scan_ECA_wide_WSLS2 %>%
+  group_by(SUBJECTID, Feedback_prior) %>%
+    dplyr::summarize(GROUP_ECA = GROUP_ECA[1],
+                     PC1_log = mean(PC1_log, na.rm = T),
+                     AGE.c = AGE.c[1],
+                     SEX.c = SEX.c[1], 
+                Fam_inc_needs = Fam_inc_needs[1],
+                IQ = IQ[1], 
+         perceived_effort_ave = perceived_effort_ave[1], 
+         perceived_reinforce = perceived_reinforce[1],
+        Reinforce_rate = Reinforce_rate[1],
+         perceived_control = perceived_control[1], 
+         win_feeling = win_feeling[1],
+        lose_feeling = lose_feeling[1],
+         motivated = motivated[1],
+        frustrated = frustrated[1],
+        diff_pos_affect = diff_pos_affect[1],
+        median_motor_RT_ave = median_motor_RT_ave[1],
+        setback_Amyg = setback_Amyg[1],
+        reward_Amyg = reward_Amyg[1],
+        setback_vmPFC = setback_vmPFC[1],
+        reward_vmPFC = reward_vmPFC[1], 
+        total_TRs_censored = total_TRs_censored[1], 
+        choice_choice_mPFC = choice_choice_mPFC[1], 
+        stay_shift = mean(stay_shift, na.rm = T), 
+        N_trials = mean(N_trials, na.rm = T))
+
+beh_scan_ECA_wide_WSLS_setbacks <- beh_scan_ECA_wide_WSLS_FB %>%
+  filter(Feedback_prior == "Setback")
+
+```
+
+
+## mPFC choice and perceived reinforcement: SIG
+we know from thee specification curve analysis that's robust! 
+check that sig models just don't include reinforce rate... 
+```{r}
+choice_mPFC_mod_pr <- lm(choice_choice_mPFC ~ total_TRs_censored +
+                             perceived_reinforce + #Reinforce_rate +
+                          # perceived_effort_ave +
+                 #  perceived_control + win_feeling + lose_feeling + 
+                 #  motivated + frustrated +
+                   AGE.c + SEX.c +  median_motor_RT_ave,
+                      data = beh_scan_ECA_wide2)
+
+summary(choice_mPFC_mod_pr)
+```
+
+
+
+## amyg reward and perceived reinforcement: SIG
+we know from the specification curve analysis that's robust! 
+check that sig models just don't include reinforce rate... 
+```{r}
+reward_Amyg_mod_pr <- lm(reward_Amyg ~ total_TRs_censored +
+                             perceived_reinforce + Reinforce_rate +
+                       #    perceived_effort_ave +
+                   #perceived_control + win_feeling + lose_feeling + 
+                   #motivated + frustrated + IQ + Fam_inc_needs +
+                   AGE.c + SEX.c +  median_motor_RT_ave,
+                      data = beh_scan_ECA_wide2)
+
+summary(reward_Amyg_mod_pr)
+```
+
+plot effect 
+```{r}
+effect_df <- data.frame(effect("frustrated", vmPFC_mod_frust), conf_int = T)
+
+effect_plot <- ggplot(data = effect_df, aes(x = frustrated, y = fit)) + 
+  geom_line(color = dark_blue) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_jitter(data = beh_scan_ECA_wide2, color = dark_blue,
+             aes(x = frustrated, y = setback_vmPFC), alpha = 0.2, width = 0.05, height = 0) + 
+  theme_classic() + ylab("vmPFC response to setbacks") + 
+  xlab("Self-reported frustration")
+
+ggsave(effect_plot, file = "figures/vmPFC_frustration_behavior/vmPFC_to_setbacks_by_frustration.png", 
+     height = 4, width = 6)
+```

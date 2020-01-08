@@ -1,0 +1,396 @@
+---
+title             : "The influence of early caregiving adversity on effort-based persistence"
+shorttitle        : "Early adversity and effort-based persistence"
+
+author: 
+  - name          : "[Anonymous Author(s)]"
+    affiliation   : "a"
+    corresponding : yes    # Define only one corresponding author
+    address       : "[Anonymized Corresponding Author Address]"
+    email         : "[Anonymized Author Email]"
+
+affiliation:
+  - id            : "a"
+    institution   : "[Anonymized Institution(s)]"
+
+authornote: |
+  a [Anonymized Corresponding Author Address(es)]
+  
+  Declarations of interest: none
+  
+  stuff
+
+abstract: |
+  stuff 
+  
+keywords          : "stuff"
+wordcount         : "4,967"
+
+#bibliography      : ["rfcfloss.bib"]
+
+floatsintext      : yes
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+linenumbers       : no
+mask              : no
+draft             : no
+
+header-includes   :
+  - \usepackage{setspace}
+  - \usepackage{makecell}
+  - \raggedbottom
+
+documentclass     : "apa6"
+classoption       : "man"
+output            : papaja::apa6_word
+---
+
+
+```{r setup, warning = FALSE, message = FALSE}
+
+# Set knitr options
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, include = FALSE, message = FALSE, cache = TRUE)
+knitr::opts_knit$set(root.dir = normalizePath('../2_Planned_Analyses/'))
+
+
+source("../../../0_R_analysis_setup_file.R", echo=F)
+
+# If sourcing from an .Rmd file, run this instead: 
+ksource <- function(x, ...) {
+  library(knitr)
+  source(purl(x, output = tempfile()), ...)
+}
+
+```
+
+# 1.  Introduction
+
+# 2.  Methods
+
+## 2.1.  Participants
+The participants in this study consisted of a sub-sample of a larger cohort of children ages 6-12 from the NY metropolitan area. Families were recruited through street fairs, flyering, craigslist advertisements, parenting listserves, non-profit family organizations, word of mouth, collaborator contacts, and pediatric medicaid clinics in the NYC area. The sample included both children currently living with their biological families and adopted children with history of institutional or foster care. 
+
+Exclusionary criterion included MRI contraindications, autism diagnosis or any other significant developmental delay, significant prenatal health complication. Children with DSM Axis 1 diagnosis (e.g. ADHD) were not excluded, and children on medication (e.g. stimulants) were asked to go off the medication (only if possible) for the day of the study visit, and were not excluded. The study was approved by the Columbia University IRB at the Morningside Campus. Parents provided consent for themselves and their children to participate. Children provided verbal assent (ages 6) or written consent (ages 7-12). Families received travel reimbursement and payment for their participation. 
+
+
+```{r echo=F, results = "hide", warning=FALSE, include = F}
+ksource("6_COMP_ECA_demographics.Rmd")
+
+total_N <- ECA_scan_demo_table$N[1]
+mean_age <- ECA_scan_demo_table$mean_age[1]
+sd_age <- ECA_scan_demo_table$sd_age[1]
+Prop_female <- ECA_scan_demo_table$Prop_female[1]
+```
+
+ 
+```{r Table1Demo, include = TRUE, results = 'asis'}
+apa_table(wide_table, caption = "Table 1. Demographic information for the behavioral and scanning samples, after applying exclusionary criterion.") 
+```
+
+## 2.2 Procedure
+
+## 2.2.1 General procedure
+Children and their families completed the study during a laboratory visit that lasted 3-4 hours.Parents completed a series of interviews and questionnaires (see materials). Children participated in a mock-scanning session, followed by an assessment of IQ (WASI) and achievement (WIAT). Next, they completed the finger-tapping task to obtain a baseline measure of motor skills, and a computerized practice of the effort task to ensure the children understood the task instructions. Children were instructed that they would have the opportunity to earn a special prize (e.g. stuffed animal, stickers) following the completion of the task, which was conducted at the end of a 1-hour MRI scan. Participants who do not complete the effort task in the scanner complete an identical computerized version outside the scanner (with external keyboard). Following the MRI scan, children completed a series of self-reported questions regarding their perceived effort, perceived control, perceived reinforcement, motivation, frustration, and positive affect during the task. 
+
+## 2.2.2. Finger tapping task
+In order to obtain a baseline measurement of children’s motor skills, participants completed a computerized finger-tapping task outside of the scanner, presented in Psychopy. Participants were instructed to press a key as fast as they could (computer keyboard) using either their thumb or ring finger for 20 second intervals. This task will also provide us with participant’s self-reported perceived effort for finger tapping with thumb relative to ring finger prior to completing the effort task. Measures obtained from the finger tapping task will include: (a) motor speed with thumb (median value of presses in 20 sec) (b) motor speed with ring finger (c) self-reported perceived effort for the ring finger and thumb, respectively.
+
+## 2.2.3. Practice for the effort reward task
+
+Children completed a computerized practice version of the effort-reward task outside of the scanner using a keyboard button box. The practice consisted of 4 trials of the task, at a pace two times slower than the fMRI task (e.g. choice phase for 6 seconds, effort phase for 6 seconds, feedback phase for 3 seconds). Additional practice trials were provided if necessary to ensure participants understood the choice, effort, and feedback phases of the task.
+fMRI procedure:
+
+
+
+## 2.2.4. Effort Reward Task
+Participants completed 2 runs of a 5 minute (21 trial) event-related fMRI task. Each trial consisted of 3 components: Choice, Effort, and Feedback (Figure 1). During the “choice” phase of the task (3 seconds), participants are instructed to choose between a hard task (6 button presses with ring finger) with a higher reward payout (stack of gold tokens) and an easy task (3 button presses with thumb) with a lower reward payout (fewer gold tokens). During the “effort” phase, participants had 3 seconds to complete the required button presses for the task (Figure 1). During the “feedback” phase (1.5s), the reward or setback was presented on the screen (50% positive / negative reinforcement). Rewards consisted of gold coins, and setbacks consisted of gold coins with a red sign overlayed (indicating no reward). Feedback was randomized in psychopy, such that each trial had a 50% chance of reward or setback (winning or not winning coins) regardless of which choice they made (hard vs. easy). If participants did not complete the required number of button-presses in the allotted time frame (incomplete effort trials), they received “too slow” feedback. 
+
+
+(ref:EffortTaskFigCaption) . Effort Reward fMRI task design. 
+
+```{r effortrewardtask, include = T, cache = T, fig.cap = "(ref:EffortTaskFigCaption)", fig.align = "center"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("images/Effort_task_Figure.002.png")
+```
+
+## 2.2.5 Effort reward post-test  
+ Following completion of the effort reward task, children completed a computerized post-test to assess their enjoyment, alertness, motivation, frustration on a scale from 1-4. We also assessed their perceived effort for the hard and easy task, respectively, on a 1-4 scale (1 = easy, 4 = hard). Self-reported affect following rewards and setbacks was also indexed on a 1-4 scale (1= sad, 4 = happy). Perceived rate of reinforcement and perceived control were assessed on a 3 point scale (see supplement for full post-test questions). 
+
+
+## 2.4 fMRI acquisiton 
+
+## 2.4.1. Structural Scans
+High resolution T1-weighted MPRAGE scan. FOV read = 256 mm, FOV phase = 93.8, slice thickness = 0.8 mm, TR = 2.4 sec, TE = 2.24 ms, TI = 1.06s. Saggital orientation, phase encoding direction A >>P. Interleaved series, multislice mode = single shot. Echo spacing = 8.1 ms.
+
+## 2.4.2. Top-up scans
+
+Data was collected with reversed phase-encode blips, resulting in pairs of images with distortions going in opposite directions (AP and PA). From these pairs the susceptibility-induced off-resonance field was estimated using a method similar to that described in [Andersson 2003] as implemented in FSL’s top-up function [Smith 2004] to be used for B0 unwarping.
+
+## 2.4.3. Functional Scans
+
+Multiband EPI sequences. FOV read: 216 mm, FOV phase = 102.2%, slice thickness = 2.4 mm, TR = 800 ms, TE = 30 ms, Phase encoding direction A >> P, interleaved series, multiband acceleration factor = 6, Transversal orientation. 375 volumes were collected per run for a total run time of 300 seconds (5.0 minutes).
+
+
+## 2.4.5. fMRI task jitter
+Jittered inter-trial-intervals were calculated to increase efficiency of the fMRI task design following the guidelines of Liu et al., (2001, http://fmri.ucsd.edu/tliu/papers/liu_effdet.pdf) and using scripts publically available from Jeanette Mumford. Mean ITI varied by phase: jitter 1 (between choice and effort) was the longest (2.5 sec average) to allow for maximal separation of choice from anticipatory motor activity of the effort phase. ITI between the effort and feedback was shortest (1 second), since feedback was entirely random and not dependent on effort, and the ITI between feedback and the next trial choice was an average of 1.5 seconds. We used a truncated exponential to generate each of the 3 sets of ITIs and conducted efficiency analysis to select the ITI that provided maximum efficiency for the choice and feedback phases, and a variance inflation factor below 5. The two most optimal jitter combinations were used for Run 1 and run 2 of the task, respectively. The two runs were identically structured aside from different jitter ITI. The task was presented using Psychopy (Version 1.9.0) on Windows and code for the task and efficiency calculations are available on the project OSF.
+
+## 2.4.6. fMRI task titration 
+Minor adjustments to the task were made to modulate difficulty of the “hard task” trials based on motor skills. In the first 5 trials where hard task was chosen, the difficulty was titrated as follows: if participants achieved 100% accuracy on the first two “hard task” trials, the number of button presses increased by 1, and on the subsequent two trials, this process repeated, up to maximum of 8. If participants achieved <= 50% accuracy on the first two trials, the number of button pressed decreased by 1, and this process repeated for the next two trials, down to a minimum of 4 button presses. In order to ensure that the easy task is indeed easy for children, the “easy task” trials were titrated to decrease by 1 button press if participants did not achieve 100% accuracy in the first 2 trials. However, the easy task was not titrated and always consisted of 3 button presses with the thumb. 
+
+
+## 2.5 fMRI analysis
+## 2.5.1. Preliminary quality control
+
+Fsl_motion_outliers was used to calculate Framewise displacement (FD) for each TR for each functional scan. All TRs that exceed < 0.9 mm FD was flagged to generate a censor file for first-level modeling. In addition, functional runs with greater than 100 TRs above 0.9mm FD were discarded due to excessive motion and subjects with < 1 usable run of functional data was omitted from the imaging analysis. Registration of functional images was carried out in FSL using BBR as described below in data preprocessing. Registrations were visually inspected in FSL’s report_registration.html and rated for two criteria: registration quality (1-3, where 1 = perfect and 3= unusable) and drop-out presence (1-3, where 1 = no artifact present and 3 = unusable scan). In cases where unusable registration occurred in the absence of significant motion, scans was re–reregistered using alternative pipelines (e.g. AFNI’s non-linear registration). In cases where significant drop-out in prefrontal or subcortical areas was detected in a functional run, this data was excluded from subsequent processing and analysis (N = 0). In addition, functional scans with significant artifact (motion or otherwise) that prevent proper registration were excluded (N = 1, PA069).
+
+## 2.5.2 Preprocessing
+
+High-resolution structural scans (MPRAGE) was spatially de-obliqued /centered and skull-stripped using 3dWarp and 3dSkullStrip in AFNI (Analysis of NeuroImages, Cox 1996). All subsequent FMRI data processing steps were carried out using FEAT (FMRI Expert Analysis Tool) Version 6.00, part of FSL (FMRIB’s Software Library, www.fmrib.ox.ac.uk/fsl). Registration of the functional data to the high-resolution structural image was carried out using the boundary based registration (BBR) algorithm (Greve and Fischl, 2009). B0 unwarping of the functional data was performed in FEAT using the fieldmap and magnitude images, calculated from AP-PA sequences using top-up. Registration of the high-resolution structural to standard space (FSL’s MNI standard in 2mm resolution) was carried out using FLIRT (Jenkinson 2001, 2002) and then further refined using FNIRT nonlinear registration with 12 degrees of freedom (Anderson 2007a 2007b). The following pre-statistics processing was applied: motion correction using MCFLIRT, slice-timing correction using Fourier-space time-series phase-shifting (interpolated); non-brain removal using BET (Smith 2002); spatial smoothing using a Gaussian Kernel of FWHM 6mm; grand-mean intensity normalization of the entire 4D dataset by a single multiplicative factor; high-pass temporal filtering (Gaussian-weighted least-squared straight line fitting, with sigma = 50.0s).
+
+## 2.5.3. fMRI subject-level modeling
+
+Time-series statistical analysis was carried out using FILM (pre-whitening) with local autocorrelation correction (Woolrich 2001). The first-level time series model included 8 stimulus regressors (hard choice, easy choice, hard effort, easy effort, hard setback, easy setback, hard reward, easy reward) and 1 error confound regressor (missed choices and/or ‘too slow’ effort feedback). For all level 1 models, the stimulus was convolved with the canonical Double Gamma HRF, including temporal derivatives, and six motion parameters generated in MCFLIRT was included as confound regressors. Baseline was not explicitly modeled. Indicator functions are added to model out single TRs identified to have excessive motion according to framewise displacement > 0.9 mm. Specifically, a separate regressor was generated for each high motion TR in the first-level model.
+
+For subjects with 2 runs, second-level analysis was carried out using a fixed effects model by forcing the random effects variance to zero in FLAME (FMRIB’s Local Analysis of Mixed Effects; Beckmann 2003, Woolrich 2004, Woolrich 2008), which averages contrast estimates over runs within subject.  For subjects with only 1 run of usable data, these contrast estimates were generated at the first-level (run level). The following contrast estimates were generated for all subjects: choices vs. baseline, rewards vs. baseline, setbacks vs. baseline, and setbacks vs. rewards. In a subset of participants with at least 8 trials per choice condition, we also examined hard vs. easy choices. In another subset of participants that had at least 8 trials for hard setbacks and easy setbacks (respectively), we also performed contrasts for hard reward vs. hard setbacks.
+
+ 
+## 2.5.4 ROI selection
+
+ROIs were defined from Harvard Oxford Subcortical atlas for the bilateral amygdala and thresholded at 50% probability and transformed back into subject’s native functional space. The bilateral ventral striatum (VS) ROI was obtained from Oxford-GSK-Imanova (https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/Atlases/striatumstruc). Prefrontal ROIs were defined using neurosynth. For the choice phase of the task, we created mPFC and ACC ROIs by drawing a 10mm sphere around the peak voxels from neurosynth association test map for the term “choice” (http://www.neurosynth.org/analyses/terms/choices/). For the feedback phase of the task, we drew a 10mm sphere around the peak voxels of the mPFC cluster from neurosynth for the association test for the term “negative feedback” (http://www.neurosynth.org/analyses/terms/negative%20feedback/). In addition, we used a more ventral mPFC (vmPFC) ROI based on prior research on persistence to setbacks in adults (Bhanji et al., 2014). Specifically, we will use 10mm spherical ROI around the peak voxels of deactivation in response to uncontrollable setbacks (-10, 44, -6). Average parameter estimates (from cope files in FSL) was used for each contrast of interest.
+
+## 2.6. Materials
+
+## 2.6.1. Caregiver Interview 
+During the study visit, parents completed a semi-structured interview that consisted of several measures of child's medical, psychiatric, and caregiving histories. First, parents provided Health history and medication history using PHENX (CITATION). and health questionnaire (CITATION). Parents completed the Kiddie Schedule for Afective Disorders and Schizoprehia (KSADS) interview to obtain measures of current and past history of psychiatric disorders (citation). KSADS also included measures of exposure to Sexual, Physical, or Domestic Violence.
+
+Parents also completed a series of interviews to densely phenotype children's caregiving history. A  Caregiver History  (CGH) timeline was obtained from the parent, which included (a) the type of caregiving environment (b) the timing of exposure and (b) the number of potential caregiver switches.  Parents then completed the Maltreatment Interview on Child Maltreatment which assessed the subtype, severity, and timing of the child's exposure to caregiver maltreatment/abuse. Seven subtypes of maltreatment were assessed, including Physical Abuse, Sexual Abuse, Emotional Abuse, Emotional Neglect, Lack of Supervision, Failure to Provide, Domestic Violence.
+
+## 2.6.2  Parent-reported Questionnaires 
+Several parent-reported questionnairese were obtained during the study visit. For the Traumatic Events Screener Inventory (TESI) parents responded (yes, no, unsure) regarding their child's exposure to a series of traumatic events.  Child Behavior Checklist (CBCL) measured children's behavior and symptomology.  T-scores were used to account for age-differences in prevelence of psychiatric symptoms across the age-range of the study. 
+
+## 2.7 Analysis Plan
+
+## 2.7.1 Inclusion criterion
+
+Behavior: XX participants completed at least 1 run of the task (on computer or in scanner). Runs with more than 30% of missed choice responses were omitted (N = XX) and participants who did not have at least 1 complete run with usable behavior were excluded (N= XX), resulting in a final behavioral sample of XX  subjects and XX runs.
+
+Inclusion criterion for imaging:  Of the XX children who provided usable behavioral data, XX had completed the task in the scanner (XX runs). XX runs were excluded due to excessive motion (criterion described above), and participants who did not have at least 1 usable run of scanning data were excluded (N = XX). No subjects were excluded for issues relating to registration or drop-out. After applying these criterion, a total of XX subjects (XX runs) were included for the final imaging sample. Secondary analyses will be conducted to confirm that results are consistent in sub-sample of participants with 2 complete runs of usable scan data. 
+
+Inclusion criterion for ECA variables: XX number of participants excluded due to missing questionnaire and/or interview data, leaving a final sample of XX. 
+
+
+## 2.7.2 Dimension Reduction of caregiving adversity variables 
+
+We employed principal component analysis (PCA), a canonical multivariate statistical method used for reducing dimensionality. PCA was applied to a set of binary ECA variables from the MICM, CGH, KSADS and TESI, where 1 indicated exposure and 0 indicated no exposure. Sparse variables (fewer than 5 cases in the dataset) or redundant variables (r > 0.8) were omitted from the PCA. 
+
+Bootstrap resampling (with replacement) was applied to the PCA to assess the instability of the model, which is especially important in the relatively small dataset available. We used a bootstrap matching algorithm to match individual principal components (PC) across bootstraps, which allowed us to examine the extent to which the resulting variable loadings were reliable. The aggregate bootstrapped components were then used to calculate the variance explained for each component. Subject-specific scores for each PC were generated by multiplying the aggregate bootstrap variable loadings by the subject's raw scores for each variable.  The first component of these results was used as the primary variable to assess continuous ECA exposure. 
+
+## 2.7.3 Analysis of self-report measures 
+
+We tested whether self-reported measures (motivation, frustration, positive affect following rewards vs. setbacks, perceived control, perceived reinforcement, perceived effort) differed by ECA using linear models in R. In the event of significant ECA associations, we included those measures in behavioral models to explore their relevance in explaining group differences in behavior and/or neural reactivity. 
+
+
+## 2.7.4 Analysis of behavior: effort allocation
+
+For all behavior modeling, we used bayesian mixed-effects modeling (brms package in R) with random slopes for trial number and effort choice (when applicable) to account for within subject effects. All models tested for main effects of ECA, age, and average percieved effort. In the event of significant associations, we tested their interactions. Covariates included reinforcement rate, motor speed (pre-test), IQ and income to needs. These variables were omitted in the final models, unless they were significant. 
+
+First, we assessed choice behavior as the likelihood of participants making hard vs. easy choices as a function of cumulative ECA scores. Logistic modeling was used to predict the binary outcome of hard vs. easy. Second, we examined how reaction time for effortful choices varied as a function of ECA.
+
+Third, we examined the role of ECA on motor-based measures of effort allocation. Specifically, we modeled differences in the number of over-shoots in button presses (beyond required to fill green bar) and reaction time of the button presses for hard vs. easy tasks.
+
+## 2.7.5 Analysis of behavior: decision-making strategies
+
+To index children’s decision-making strategies following rewards and setbacks, we used a win-stay, lose-shift framework (WSLS). Participants choices were modeled on a trial-by-trial basis, such that each trial (t) was predicted by prior feedback (t -1), prior effort choice (t -1), and their interaction. Bayesian mixed-effects modeling was used to specify random slopes for trial, prior feedback, prior choice, and their interaction at the within-subject level. Stay vs. shift choices were modeled as binary outcomes using logistic regression.Primary analyses omitted trials where participants received “too slow” feedback (indicating did not complete hard/easy task). Secondary analyses collapsed across “too slow” and non-reward trials as setbacks.  
+
+First, we assessed how decision-making varied as a function of prior feedback and effort. Then, in the presence of significant effects, we tested for interactions with cumulative ECA scores. Exploratory analyses assessed whether decision-making strategies changed across the task (within subject, by trial) or as a function of age and sex. 
+
+Second, we examined reaction time for stay/shift choies as a function of prior effort and prior feedback. In the presence of main effects, we assessed whether those effects were moderated by cumulative ECA scores using a similar approach. 
+
+
+## 2.7.6 Analysis of neural reactivity
+
+Parameter estimates were extracted at the subject level from each ROI for each condition of interest (choices, rewards, setbacks). Outlier values were excluded if their value exceeded 3SD beyond the mean for a given condition. Linear models in R regressed ROI activation on cumulative ECA scores. Covariates for all models included average perceived effort, age, sex, number of censored TRs (as an index of motion in scanner). IQ, and income to needs were also tested but were omitted in final models. 
+
+Planned follow-up analyses tested the role of ECA for contrasts of (a) hard vs. easy choices and (b) hard setbacks vs. hard rewards. These analyses were performed in a subset of participants with 8 trials per condition (N = XX and N = XX, respectively). Follow-up analyses for easy-effort trials were not planned for easy choices, as we would have been underpowered to detect within-subject effects given the lower frequency of easy choices relative to hard choices in the sample. 
+
+Exploratory whole-brain analyses were also conducted, excluding participants with outlier data in the ROI analyses. First, we assessed group-level activation patterns during effort-based choices (across easy and hard) and rewards relative to setbacks (across easy and hard trials). Second, we included continuous ECA exposure as a covariate of interest into the whole-brain models of choices, rewards, and setbacks in order to determine patterns of activation that related to individual differences in ECA exposure. Third, to explore the role of perceived effort, we used participant's average perceived effort as a covariate of interest in the whole-brain models of choices, rewards and setbacks. 
+
+## 2.7.8 Brain-behavior analyses
+
+Bayesian mixed-effects modeling was used to test whether individual differences in neural activation predicted variability in task behavior. First, we tested whether neural reactivity during the choice phase was associated with the proportion of hard vs. easy choices. Second, we examined win-stay lose-shift behavior as a function of neural responses to setbacks and rewards.  For each analysis, the behavioral modeling procedure and covariates were the same as above, but also included a measure of total censored TRs to account for between-subject differences in motion. 
+
+Second, we tested the role of perceived effort on 
+
+# 3.  Results
+
+## 3.1. Phenotyping Early Caregiving Adversities 
+
+All  caregiving adversity items loaded positively on the first principal component (PC1), which explained 35% of the variance in the dataset (Figure 2). Subject-specific scores for PC1 were obtained, which represented a child's cumulative exposure to multiple forms of caregiving adversity. A higher PC1 score indicates that a child was exposed to multiple (different) caregiving adversities, while a low PC1 score indicates that a child was not exposed to any caregiving adversities. This component is referred to as "cumulative ECA score" in subsequent analyses. Individual PC loadings for each variable are provided in Supplemental Table 1.  
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Proportion variance explained by each principal component.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../2_Planned_Analyses/figures/PCA/screePropVariancePCA_MatchBoostrap.png")
+
+```
+
+## 3.2 Effects of ECA on self-report measures 
+
+## 3.2.1 Descriptives 
+Descriptive information for self-report measures are shown in Table 2. Important to note several correlated variables in the self-report data. For example, perceived control is significantly correlated with positive affect to rewards and setbacks, motivation, amount of fun, and sleepiness reported by participants. Participants' perceived reinforcement rate is correlated with actual reinforcement rate, as well as positive affect to setbacks, fun, and frustration. As expected, motor skills as indexed by the finger tapping pre-test are also correlated with perceived effort, perceived control, and age. In the following models testing the effects of ECA on self-report measures, covariates are included if they are correlated with the outcome variable. 
+
+```{r, cache = TRUE ,include = T, results = 'asis'}
+load("tables/corr_table_self_report_data.Rdata")
+# beautiful correlation table thanks to apaTable package! 
+#apa.cor.table(self_report_cor_df, table.number=1)
+
+stuff_corr <- self_report_cor_df %>%
+  na.omit(.) %>%
+  correlation
+cor_table <- summary(stuff_corr)
+
+apa_table(cor_table, caption = "Table 2. Correlation table for self-report data and ECA scores.", 
+          font_size = 'tiny') 
+```
+
+
+## 3.2.2. Self-reported affect
+
+After the task, participants were asked to rate how they felt after winning and loosing coins.We detected a significant interaction between feedback condition (setback, reward) and ECA on participant's self-reported affect (1 = very unhappy, 4 = very happy). Simple slopes analyses revealed that greater ECA exposure is associated with greater positive affect following rewards, and greater negative affect following setbacks. Important to note that these affect measurements are obtained outside of the scanner after the task, and do not reflect trial-by-trial fluctuations in affect. *However, these results suggest that ECA is associated with more extreme affect ratings following rewards and setbacks.* In order to account for affective sensitivity to rewards and setbacks in subsequent analyses, a difference score was computed (positive affect follwing rewards - setbacks).
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Higher Cumulative ECA scores are associated with greater positive affect following rewards, and reduced positive affect following setbacks", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../2_Planned_Analyses/figures/self_report_ECA/positive_affect_by_PC1.png")
+```
+ 
+ 
+No effects of cumulative ECA score were detected for self-reported frustration during the game(STATS). Frustration was predicted significantly by perceived reinfrcement (STATS), such that greater perceived reinforcement rate was asssciated with higher frustration. [THIS DOESNT REALLY MAKE SENSE].
+
+Cumulative ECA was significantly associated with self-reported motivation when accounting for perceived effort and motor speed in the model (STATS). Specifically, greater ECA score was associated with lower motivation. 
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Higher Cumulative ECA scores are associated with reduced self-report motivation during the task", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../2_Planned_Analyses/figures/self_report_ECA/motivation_by_PC1.png")
+```
+
+## 3.2.3. Perceived effort
+
+[don't have pre-test effort numbers]
+We detected significant main effect of ECA on perceived effort (STATS) such that greater ECA exposure was associated with increased perceived effort. There was also a main effect of condition, such that participants rated the hard task as more effortful than the easy task (STATS). Ccondition did not moderate the effects of ECA on perceived effort (STATS), *suggesting that higher ECA scores were associated with greater perceived effort for both easy and harder tasks (Figure X)*.  Age was negatively associated with perceived effort,  (STATS), but age did not interact with Condition effects (STATS) or ECA effects (STATS).
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Positive association between cumulative ECA scores and self-reported perceived effort during the task.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../2_Planned_Analyses/figures/perceived_effort/perceived_effort_by_PC1_log.png")
+```
+
+
+## 3.2.4. Perceived control 
+In order to assess children's understanding of the uncertainty of the task environment, they reported how much control they felt they had over winning coins (none, some, a lot). We detected a significant positive association of age (STATS) such that older children reprted less perceived control, suggesting they better understood the randomized nature of the task feedback. Affect sensitivty to rewards vs. setbacks was significantly related to perceived control, (STATS) such that greater differences in affect to rewards vs. loses predicted greater perceived control. However, there was no association with cumulative ECA scores (STATS). 
+
+## 3.2.5. Perceived reinforcement 
+After the game, participants reported how often they believed they won coins (1 = never, 2 = sometimes, 3 = always) to index their perceived reinforcement. Greater ECA scores were associated with greater perceived reinforcement (STATS), controlling for actual reinforcement rates (STATS), age (STATS), sex (STATS), and motor speed (STATS). SHOULD TECHNICALLY DO POISSON REGRESSION?
+
+However, actual reinforcement rates (rewards vs. setbacks) were randomly administered and did not vary by cumulative ECA (STATS), *suggesting that greater adversity exposure is associated with increased perception or encoding of rewards*. 
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Higher Cumulative ECA scores are associated with greater perceived reinforcement during the task.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../2_Planned_Analyses/figures/self_report_ECA/perceived_reinforce_by_PC1.png")
+```
+
+
+
+## 3.2.6.  Task engagement and fatigue 
+
+Participants also rated the amount of fun they had playing the game and how sleepy they were during the gamee, to index overall enjoyment and engagement. Cumulative ECA score was not associated with self-reported levels of fun (STATS) or sleepinness (STATS). However, age (STATS), perceived control (STATS) and perceived reinforcement (STATS)  predicted the level of fun participants experienced. 
+
+ *These findings suggest that ECA-related differences in perceived effort, perceived reinforcement, and positive affect are not due to differences in task engagement or fatigue.*
+
+
+## 3.3 Effects of ECA on effort allocation 
+
+## 3.3.1. Choice behavior 
+Cumulative ECA score was not associated with likelihood of participants choosing the hard vs. easy task. There was a main effect of trial number, such that the likelihood of hard choices declined over time declined (STATS). No significant effects of perceived effort, age, sex, or reinforcement rate were detected. 
+
+Decision-making reaction time varied significantly by the choice (Hard vs. Easy; STATS). We also detected significant main effects of age on reaction time, such that for both easy and hard choices, reaction time decreased with age (Figure X). Cumulative ECA score was not associated with reaction time as a main effect (STATS) or interaction with choice (STATS). However, we detected a significant positive effect of perceived effort on decision-making sreaction time (STATS), as shown in Figure X.
+
+*Together, these results show that while ECA was unrelated to effortful decision-making, participants that reported greater perceived effort had slower reaction time for both hard and easy choices*. 
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Perceived effort is positively associated with effort-choice reaction time.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../2_Planned_Analyses/figures/Aim1_hypothesis1b/choice_RT_by_perceived_effort.png")
+```
+
+
+
+## 3.3.3. Motor measures of effort allocation 
+In order to index motor performance on the hahrd and easy tasks, we measured the number of over-shoots in button presses required to fill up the green bar. Cumulative ECA score (STATS) and perceived effort (STATS) were not related to performon number of overshoots. We did detect a main effect of condition (hard vs. easy), such that children were more likely to over-shoot the number of button presses required for the easy task relative to the hard task. Children's motor speed indexed from pre-test also significantly predicted their RT during the game.
+
+No effects of ECA (STATS) or perceived effort (STATS) on RT of button presses to fill up green bar during hard/ easy tasks. As expected, we did detect main effect of condition (hard vs. easy), such that participants pressed faster for the hard task, which required more button presses in the same amount of time, relative to the easy task (STATS). In addition, age was negatively associated with button pressing reaction time, and positively associated with motor speed indexed from the pre-test.
+
+*Together, these results suggest that although motor performance was influenced by age, it did not vary by cumulative ECA or perceived effort. Importantly, trial number was not associated with number of over-shoots or reaction time, suggesting that although participants made fewer hard choices over time, motor performance overall was similar across the length of the 10 minute task*. 
+
+## 3.3.4. Sanity check: motor pre-test
+No ECA differences in motor speed (RT) during pre-test 
+
+## 3.4. Effects of ECA on decision-making strategies  
+
+## 3.4.1. WSLS behavior 
+We detected a significant Feedback x effort interaction (STATS) on stay-shift behavior.  Participants showed the canonical 'win-stay, lose-shift' strategy following the hard task, but not the easy task. Following hard-effort trials, participants were more likely to choose hard again after a hard-effort reward relative to a hard-effort setback (SIMPLE SLOPES). There were no differences in stay/shift behavior between easy setbacks and easy rewards (SIMPLE SLOPES). There was also a main effect of prior effort: regardless of feedback participants were more likely to make a 'stay' decision after a hard-effort trial relative to an easy-effort trial (STATS). 
+
+The main effect of prior effort on stay-shift decision-making was moderated by ECA (STATS). *Higher ECA  is associated with greater likelihood to choose easy again after an easy task (easy-stay), regardless of feedback*. Compared to  low ECA exposure (-1SD), where they are 50% likely to switch to hard after an easy task, higher ECA exposure (+SD) is 80% likely to choose easy again. Interestingly, there was no effect on ECA for decisions following a hard task (STATS). 
+
+Finally, trial number and age also moderated the effects of prior effort, such that easy-stay behavior increased over the course of the task (STATS), and easy-stay behavior also decreased with increasing age (STATS). However, these interaction effects were not moderated by ECA (NS 3 way interactions).
+
+## 3.4.2. WSLS reaction time
+There was a  prior Feedback x prior Effort interaction for stay-shift reaction time (STATS). Simple slopes analyses revealed that participants were  faster to switch vs. stay after an easy task (i.e., choose hard), and faster to stay vs. switch following a hard task (i.e., choose hard). These results mirror the prior reaction time analyses, indicating that faster RT occurs for hard-effort choices. However, ECA exposure did not moderate these effects (STATS).
+
+
+## 3.5 Effects of ECA on neural recruitment during choice phase 
+## 3.5.1. Choice ROIs
+No ECA effects on ACC, mPFC, and VS.
+
+## 3.5.2. Whole brain models with ECA/perceived effort.
+Need to run analyses 
+
+## 3.6 Effects of ECA on neural reactivity to feedback
+
+## 3.6.1. apriori ROIs 
+
+REWARD: no effects of ECA on reward reactivity on vmPFC, mPFC, VS, Amygdala 
+SETBACK: Significant effect of ECA on setback reactivity (relative to baseline), such that greater ECA is associated with less amygdala reactivity. *These results suggest that greater eCA score is associated with lower reactivity of the amygdala to setbacks.*
+
+Does perceived effort relate?
+
+## 3.6.2. Whole brain models with ECA/perceived effort
+
+
+## 3.7 Brain-behavior associations 
+
+## 3.7.1. Effort allocation and neural recruitment 
+variability in choice ROI recruitment does not relate to proportion of hard vs. easy choices.
+variability in feedback reactivity does not relate to proportion of hard vs. easy choices 
+
+## 3.7.2 Decision-making strategies and neural recruitment 
+variability in choice ROI recruitment does not relate to WSLS lose-shift strategies 
+variability in feedback reactivity does not relate to WSLS lose-shift strategies 
+
+## 3.7.3 Self-report measures and neural recruitment 
+does the brain reactivity mediate the effects of ECA on perceived effort? 
+
+
+\newpage
+
+# References
+```{r create_r-references}
+#r_refs(file = "manuscript/rfcfloss.bib")
+```
+
+\begingroup
+\setlength{\parindent}{-0.5in}
+\setlength{\leftskip}{0.5in}
+
+<div id = "refs"></div>
+\endgroup

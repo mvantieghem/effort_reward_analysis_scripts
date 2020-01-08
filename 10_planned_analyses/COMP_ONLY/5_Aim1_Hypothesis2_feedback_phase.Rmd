@@ -1,0 +1,562 @@
+---
+title: "Aim 1 Hypothesis 2 feedback phase"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+## with scanning data 
+from data_cleaning_for_analysis 
+```{r}
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide_WSLS.Rdata")
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long_WSLS.Rdata")
+
+```
+
+
+## Hypothesis 2:  Processing of positive and negative feedback will involve prefrontal regions (vmPFC, mPFC) and subcortical regions (amygdala, striatum).
+In particular, we hypothesize that (a) ventral striatum response will be greater to rewards vs. setbacks and (b) amygdala response will be greater to setbacks vs. rewards and (c) differential responses in prefrontal regions to setbacks vs. rewards. Follow-up analyses will examine differences in feedback responses following Hard vs. Easy effort allocations.
+
+
+### set up & clean data
+```{r} 
+FB_level_order <- c("vmPFC", "mPFC", "VS", "Amyg")
+
+# get just reward ROIs
+reward_df <- beh_scan_comp_wide %>%
+  rename(Amyg = reward_Amyg,
+         mPFC = reward_mPFC, 
+         vmPFC = reward_vmPFC, 
+         VS = reward_VS) %>%
+  select(-starts_with("choice"), -starts_with("setback"), 
+         -starts_with("feedback"), -starts_with("reward_setback")) %>%
+  gather(key = "ROI", value = "reward_beta",  vmPFC, mPFC, VS, Amyg)
+
+# get just setback ROIs
+setback_df <- beh_scan_comp_wide %>%
+   rename(Amyg = setback_Amyg, 
+          vmPFC = setback_vmPFC, 
+         mPFC = setback_mPFC, 
+         VS = setback_VS) %>%
+  select(-starts_with("choice"), -starts_with("setback"), 
+         -starts_with("feedback"), -starts_with("setback_setback")) %>%
+  gather(key = "ROI", value = "setback_beta",  vmPFC, mPFC, VS,  Amyg) %>%
+  select(SUBJECTID, ROI, setback_beta)
+
+# combine them in long format
+FB_df <- merge(reward_df, setback_df, by = c("SUBJECTID", "ROI")) %>%
+  mutate(reward_minus_setback = reward_beta - setback_beta,
+  ROI = factor(ROI, levels = FB_level_order),
+         AGE.c = AGE - mean(AGE, na.rm = T),
+         SEX.c = SEX - mean(SEX, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T)) %>%
+  gather(key = "contrast", value = "beta", reward_beta, setback_beta, reward_minus_setback)
+
+# rename levels of contrast factor
+FB_df$contrast <- as.factor(ifelse(FB_df$contrast == "reward_beta", "reward", ifelse(FB_df$contrast == "setback_beta", "setback", FB_df$contrast)))
+```
+
+### plot before removing outliers
+```{r}
+ggplot(data = FB_df, aes(x = contrast, y = beta, color = contrast)) + 
+  geom_point(position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+    theme_bw() + facet_grid(~ROI) + my_colors + my_colors2 
+
+```
+
+### clean data
+```{r}
+# calculate limits fo routliers at 3SD from mean
+FB_outliers <- FB_df %>%
+  group_by(ROI, contrast) %>%
+  summarize(outlier_upper = mean(beta) + 3*sd(beta), 
+            outlier_lower = mean(beta)- 3*sd(beta))
+
+# mark outliers for each ROI
+FB_df2 <- data.frame()
+for (region in unique(FB_outliers$ROI)){
+  #region = "choice_mPFC"
+  #print(region)
+  for (cope in unique(FB_outliers$contrast)){
+   # print(cope)
+      #cope = "reward_minus_setback"
+      check <- FB_df %>% filter(ROI == region & contrast == cope) %>%
+      mutate(FB_outlier = ifelse(beta > FB_outliers$outlier_upper[FB_outliers$ROI == region & FB_outliers$contrast == cope] | 
+                                 beta < FB_outliers$outlier_lower[FB_outliers$ROI == region & FB_outliers$contrast == cope], 1, 0))
+      FB_df2 <- rbind(FB_df2, check)
+  }
+}
+
+# look at outlier #
+outlier_table <- FB_df2 %>%
+  group_by(ROI, contrast) %>%
+  summarize(n = n(), 
+            n_outlier = sum(FB_outlier))
+# idk why i ahve to do thsi!! 
+outlier_table$n <- outlier_table$n 
+outlier_table$n_outlier <- outlier_table$n_outlier
+
+outlier_table
+# remove data of outliers 
+FB_df2 <- FB_df2 %>% 
+  mutate(beta = ifelse(FB_outlier > 0 , NA, beta))
+sum(is.na(FB_df2$beta))
+FB_outlier_subjects <- FB_df2 %>% 
+  filter(FB_outlier == 1) %>% select(SUBJECTID, ROI, contrast)
+
+FB_outlier_subjects
+save(FB_outlier_subjects, file = "tables/Feedback_betas_outlier_subjects.Rdata")
+```
+
+
+### Model 2 for vmPFC
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod2_vmPFC <- lmer(beta ~ contrast + #IQ.c + 
+                     AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "vmPFC"))
+summary(mod2_vmPFC)
+
+```
+
+### Model 2 for mPFC
+
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod2_mPFC <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "mPFC"))
+summary(mod2_mPFC)
+
+```
+
+### Model 2 for VS
+
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod2_VS <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "VS"))
+summary(mod2_VS)
+
+```
+
+
+### Model 2 for Amyg
+
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod2_amyg <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "Amyg"))
+summary(mod2_amyg)
+
+```
+
+
+### Model 2 plot for all ROIs
+
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("contrast", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("contrast", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("contrast", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("contrast", mod2_amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg)
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = contrast, y = fit, fill = contrast)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.5) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_point(data = subset(FB_df2, contrast != "reward_minus_setback"), 
+            aes(x = contrast, y = beta, color = contrast), position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+  
+ # geom_line(data =subset(FB_df, contrast != "reward_minus_setback"), 
+  #          aes(x = contrast, y = beta, color = contrast, group = SUBJECTID), alpha = 0.2) + 
+  ylab("Reactivity during Feedback Phase") + xlab ("Feedback") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+pdf("figures/All_ROIs_Reward_Setback.pdf", width = 6, height = 3)
+plot_effect
+dev.off()
+
+```
+
+### Model 2 table for all ROIs
+
+re-level ROIs to get results for each ROI
+```{r}
+FB_df2 <- FB_df2 %>%
+  mutate(ROI_vmPFC = relevel(ROI, "vmPFC"),
+         ROI_mPFC = relevel(ROI, "mPFC"),
+         ROI_VS = relevel(ROI, "VS"),
+         ROI_Amyg = relevel(ROI, "Amyg"), 
+         contrast_reward = relevel(contrast, "reward"), 
+         contrast_setback = relevel(contrast, "setback"))
+ 
+# vmPFC
+mod2_vmPFC_r <- lmer(beta ~ contrast_reward + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "vmPFC"))
+reward_effect_vmPFC <- summary(mod2_vmPFC_r)$coefficients[1,]
+
+mod2_vmPFC_s <- lmer(beta ~ contrast_setback + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "vmPFC"))
+setback_effect_vmPFC <- summary(mod2_vmPFC_s)$coefficients[1,]
+reward_minus_setback_effect_vmPFC <- summary(mod2_vmPFC_s)$coefficients[2,]
+
+# MPFC
+mod2_mPFC_r <- lmer(beta ~ contrast_reward + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "mPFC"))
+reward_effect_mPFC <- summary(mod2_mPFC_r)$coefficients[1,]
+
+mod2_mPFC_s <- lmer(beta ~ contrast_setback +  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "mPFC"))
+setback_effect_mPFC <- summary(mod2_mPFC_s)$coefficients[1,]
+reward_minus_setback_effect_mPFC <- summary(mod2_mPFC_s)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg_r <- lmer(beta ~ contrast_reward + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "Amyg"))
+reward_effect_Amyg <- summary(mod2_Amyg_r)$coefficients[1,]
+# get effect when Amyg is reference ROI and setback is reference contrast
+mod2_Amyg_s <- lmer(beta ~ contrast_setback +  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "Amyg"))
+setback_effect_Amyg <- summary(mod2_Amyg_s)$coefficients[1,]
+reward_minus_setback_effect_Amyg <- summary(mod2_Amyg_s)$coefficients[2,]
+
+# VS  
+mod2_VS_r <- lmer(beta ~ contrast_reward+  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback"& ROI == "VS"))
+reward_effect_VS <- summary(mod2_VS_r)$coefficients[1,]
+# get effect when VS is reference ROI and setback is reference contrast
+mod2_VS_s <- lmer(beta ~ contrast_setback +  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(FB_df2, contrast != "reward_minus_setback" & ROI == "VS"))
+setback_effect_VS <- summary(mod2_VS_s)$coefficients[1,]
+reward_minus_setback_effect_VS <- summary(mod2_VS_s)$coefficients[2,]
+
+table_FB_activation <- data.frame(rbind(
+  reward_effect_vmPFC,  setback_effect_vmPFC, reward_minus_setback_effect_vmPFC,
+                       reward_effect_mPFC,  setback_effect_mPFC, reward_minus_setback_effect_mPFC,
+  reward_effect_VS,setback_effect_VS,reward_minus_setback_effect_VS,
+                                        reward_effect_Amyg,setback_effect_Amyg,reward_minus_setback_effect_Amyg)) 
+table_FB_activation$level <- rownames(table_FB_activation)
+
+table_FB_activation <- table_FB_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", "")))) %>%
+  select(level, Estimate, SE, df, t_value, p_value, sig)
+table_FB_activation
+save(table_FB_activation, file = "model_results/feedback_activation_model_results.Rdata")
+```
+
+## Hypothesis 2 Follow-up model: reactivity to hard setbacks vs. hard rewards 
+
+### set up & clean data
+```{r} 
+names(beh_scan_comp_wide %>% select(contains("Hard")))
+
+#organize data for choice phase.
+hard_FB_contrast_df <- beh_scan_comp_wide %>%
+  # combine left and right accumbens betas into bilateral! 
+  select(-starts_with("feedback"),  -contains("easy"), -contains("choice")) %>%
+  gather(key = "ROI", value = "beta", 
+         hard_reward_FB_vmPFC, hard_setback_FB_vmPFC, hard_reward_setback_FB_vmPFC,
+         hard_reward_FB_mPFC, hard_setback_FB_mPFC, hard_reward_setback_FB_mPFC,
+         hard_reward_VS, hard_setback_VS, hard_reward_setback_VS,
+                  hard_reward_Amyg, hard_setback_Amyg, hard_reward_setback_Amyg) %>%
+  mutate(
+           contrast = as.factor(ifelse(grepl("reward_setback", ROI), "reward_setback",
+                           ifelse(grepl("reward", ROI), "reward", "setback"))),
+           ROI = as.factor(ifelse(grepl("vmPFC", ROI), "vmPFC", 
+                        ifelse(grepl("mPFC", ROI), "mPFC",
+                               ifelse(grepl("VS", ROI), "VS", "Amyg")))),
+           AGE.c = AGE - mean(AGE, na.rm = T),
+         SEX.c = SEX - mean(SEX, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T))
+summary(as.factor(hard_FB_contrast_df$ROI))
+summary(as.factor(hard_FB_contrast_df$contrast))
+nrow(hard_FB_contrast_df)
+
+# number of subjects
+length(unique(hard_FB_contrast_df$SUBJECTID[!is.na(hard_FB_contrast_df$hard_setback_reward_FB_mPFC)]))
+
+```
+
+### plot before removing outliers
+```{r}
+ggplot(data = hard_FB_contrast_df, aes(x = contrast, y = beta, color = contrast)) + 
+  geom_point(position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+    theme_bw() + facet_grid(~ROI) + my_colors + my_colors2 
+
+```
+
+### clean data
+```{r}
+# calculate limits fo routliers at 3SD from mean
+hard_FB_outliers <- hard_FB_contrast_df %>%
+  filter(!is.na(beta)) %>%
+  group_by(ROI, contrast) %>%
+  summarize(outlier_upper = mean(beta) + 3*sd(beta), 
+            outlier_lower = mean(beta)- 3*sd(beta))
+
+# mark outliers for each ROI
+hard_FB_contrast_df2 <- data.frame()
+for (region in unique(FB_outliers$ROI)){
+  #region = "choice_mPFC"
+  #print(region)
+  for (cope in unique(FB_outliers$contrast)){
+   # print(cope)
+      #cope = "reward_minus_setback"
+      check <- hard_FB_contrast_df %>% filter(ROI == region & contrast == cope) %>%
+      mutate(FB_outlier = ifelse(beta > FB_outliers$outlier_upper[FB_outliers$ROI == region & FB_outliers$contrast == cope] | 
+                                 beta < FB_outliers$outlier_lower[FB_outliers$ROI == region & FB_outliers$contrast == cope], 1, 0))
+      hard_FB_contrast_df2 <- rbind(hard_FB_contrast_df2, check)
+  }
+}
+
+# look at outlier #
+hard_FB_outlier_table <- hard_FB_contrast_df2 %>%
+  filter(!is.na(beta)) %>%
+  group_by(ROI, contrast) %>%
+  summarize(n = n(), 
+            n_outlier = sum(FB_outlier))
+# idk why i ahve to do thsi!! 
+hard_FB_outlier_table$n <- hard_FB_outlier_table$n 
+hard_FB_outlier_table$n_outlier <- hard_FB_outlier_table$n_outlier
+
+hard_FB_outlier_table
+# remove data of outliers 
+hard_FB_contrast_df2 <- hard_FB_contrast_df2 %>% 
+  filter(!is.na(beta)) %>%
+  mutate(beta = ifelse(FB_outlier > 0 , NA, beta))
+sum(is.na(hard_FB_contrast_df2$beta))
+hard_FB_outlier_subjects <- hard_FB_contrast_df2 %>% 
+  filter(FB_outlier == 1) %>% select(SUBJECTID, ROI, contrast)
+
+hard_FB_outlier_subjects
+save(hard_FB_outlier_subjects, file = "tables/hard_FB_contrast_betas_outlier_subjects.Rdata")
+```
+
+
+### Model 2b for vmPFC 
+
+```{r}
+summary(hard_FB_contrast_df2$contrast)
+# repeated measures, with reward and setback as contrasts
+mod2b_vmPFC <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_setback" & ROI == "vmPFC"))
+summary(mod2b_vmPFC)
+
+```
+
+### Model 2b for mPFC 
+
+```{r}
+summary(hard_FB_contrast_df2$contrast)
+# repeated measures, with reward and setback as contrasts
+mod2b_mPFC <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_setback" & ROI == "mPFC"))
+summary(mod2b_mPFC)
+```
+
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod2b_VS <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2,contrast != "reward_setback" &  ROI == "VS"))
+summary(mod2b_VS)
+```
+
+### Model 2b for Amyg
+```{r}
+# repeated measures, with reward and setback as contrasts
+mod2b_Amyg <- lmer(beta ~ contrast + #IQ.c +
+                    AGE.c + SEX.c + total_TRs_censored.c + Reinforce_rate.c + #Fam_inc_needs +
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_setback" &  ROI == "Amyg"))
+summary(mod2b_Amyg)
+```
+
+
+### Model 2 plot for all ROIs
+
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("contrast", mod2b_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("contrast", mod2b_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("contrast", mod2b_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("contrast", mod2b_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg)
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = contrast, y = fit, fill = contrast)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.5) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_point(data = subset(hard_FB_contrast_df2, contrast != "reward_setback"), 
+            aes(x = contrast, y = beta, color = contrast), position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+  ylab("Reactivity to hard trial feedback") + xlab ("Feedback") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+pdf("figures/All_ROIs_Hard_Reward_Setback.pdf", width = 6, height = 4)
+plot_effect
+dev.off()
+
+```
+
+### Model 2 table for all ROIs
+
+re-level ROIs to get results for each ROI
+```{r}
+hard_FB_contrast_df2 <- hard_FB_contrast_df2 %>%
+  mutate(ROI_vmPFC = relevel(ROI, "vmPFC"),
+         ROI_mPFC = relevel(ROI, "mPFC"),
+         ROI_VS = relevel(ROI, "VS"),
+         ROI_Amyg = relevel(ROI, "Amyg"), 
+         contrast_reward = relevel(contrast, "reward"), 
+         contrast_setback = relevel(contrast, "setback"))
+ 
+# vmPFC
+mod2_hard_FB_vmPFC_r <- lmer(beta ~ contrast_reward + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "vmPFC"))
+reward_effect_vmPFC <- summary(mod2_hard_FB_vmPFC_r)$coefficients[1,]
+
+mod2_hard_FB_vmPFC_s <- lmer(beta ~ contrast_setback + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "vmPFC"))
+setback_effect_vmPFC <- summary(mod2_hard_FB_vmPFC_s)$coefficients[1,]
+reward_minus_setback_effect_vmPFC <- summary(mod2_hard_FB_vmPFC_s)$coefficients[2,]
+
+# MPFC
+mod2_hard_FB_mPFC_r <- lmer(beta ~ contrast_reward + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "mPFC"))
+reward_effect_mPFC <- summary(mod2_hard_FB_mPFC_r)$coefficients[1,]
+
+mod2_hard_FB_mPFC_s <- lmer(beta ~ contrast_setback +  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "mPFC"))
+setback_effect_mPFC <- summary(mod2_hard_FB_mPFC_s)$coefficients[1,]
+reward_minus_setback_effect_mPFC <- summary(mod2_hard_FB_mPFC_s)$coefficients[2,]
+
+# AMYGDALA
+mod2_hard_FB_Amyg_r <- lmer(beta ~ contrast_reward + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "Amyg"))
+reward_effect_Amyg <- summary(mod2_hard_FB_Amyg_r)$coefficients[1,]
+# get effect when Amyg is reference ROI and setback is reference contrast
+mod2_hard_FB_Amyg_s <- lmer(beta ~ contrast_setback +  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "Amyg"))
+setback_effect_Amyg <- summary(mod2_hard_FB_Amyg_s)$coefficients[1,]
+reward_minus_setback_effect_Amyg <- summary(mod2_hard_FB_Amyg_s)$coefficients[2,]
+
+# VS  
+mod2_hard_FB_VS_r <- lmer(beta ~ contrast_reward+  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback"& ROI == "VS"))
+reward_effect_VS <- summary(mod2_hard_FB_VS_r)$coefficients[1,]
+# get effect when VS is reference ROI and setback is reference contrast
+mod2_hard_FB_VS_s <- lmer(beta ~ contrast_setback +  AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                  (1 | SUBJECTID),
+                data = subset(hard_FB_contrast_df2, contrast != "reward_minus_setback" & ROI == "VS"))
+setback_effect_VS <- summary(mod2_hard_FB_VS_s)$coefficients[1,]
+reward_minus_setback_effect_VS <- summary(mod2_hard_FB_VS_s)$coefficients[2,]
+
+table_hard_FB_activation <- data.frame(rbind(
+  reward_effect_vmPFC,  setback_effect_vmPFC, reward_minus_setback_effect_vmPFC,
+                       reward_effect_mPFC,  setback_effect_mPFC, reward_minus_setback_effect_mPFC,
+  reward_effect_VS,setback_effect_VS,reward_minus_setback_effect_VS,
+                                        reward_effect_Amyg,setback_effect_Amyg,reward_minus_setback_effect_Amyg)) 
+table_hard_FB_activation$level <- rownames(table_hard_FB_activation)
+
+table_hard_FB_activation <- table_hard_FB_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", "")))) %>%
+  select(level, Estimate, SE, df, t_value, p_value, sig)
+table_hard_FB_activation
+save(table_hard_FB_activation, file = "model_results/hard_FB_activation_model_results.Rdata")
+```
+

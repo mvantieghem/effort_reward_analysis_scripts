@@ -1,0 +1,1496 @@
+---
+title: "Aim1, hypothesis2a: Feedback reactivity"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  png_document:
+    toc: yes
+---
+
+# notes
+Dec 1 2019: updated with new MICM variables and using PC1_log instead of sqrt. \
+Dec 8, 2019: updated with PA255 so N=127 for ROIs ... but ends up being 117 because of 10 kids missing questionnaires for the PCA. \
+Jan 6, 2020: adding self-report covariates. Testing all of them in model, and omitting covariates that are NS for final models. Always keeping motion, reinforcement rate, age and sex in all models.  Because of all of these testing, na.omit() to remove subjects with missing values for any of the variables, to more accurately compare models. N sample = 100 instead of 117. \
+
+summary of results: ECA effect on amygdala to setbacks is consistent.
+perceived effort on vmPFC to setbacks is consistent. 
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R")
+```
+
+
+```{r}
+# load all data with PCA added!
+load("data/all_pacct_effort_data_with_PCA.rda")
+```
+
+# Aim 1: Characterize effects of ECA exposure on neurobehavioral phenotype of persistence.
+
+## Hypothesis 2a: neural response to feedback
+At the group-level, ECA-exposed children will show heightened amygdala reactivity in response to setbacks
+
+##  clean data
+```{r} 
+FB_level_order <- c("vmPFC", "mPFC", "VS", "Amyg")
+
+# get just reward ROIs
+reward_df <- beh_scan_ECA_wide %>%
+  rename(Amyg = reward_Amyg,
+         mPFC = reward_FB_mPFC, 
+         vmPFC = reward_vmPFC, 
+         VS = reward_VS) %>%
+  select(-starts_with("choice"), -starts_with("setback"), 
+         -starts_with("feedback"), -starts_with("reward_setback")) %>%
+  gather(key = "ROI", value = "reward_beta",  vmPFC, mPFC, VS, Amyg) %>%
+  filter(!is.na(reward_beta))
+
+# check right number of subjects! 
+length(unique(reward_df$SUBJECTID))
+
+# get just setback ROIs
+setback_df <- beh_scan_ECA_wide %>%
+   rename(Amyg = setback_Amyg, 
+          vmPFC = setback_vmPFC, 
+         mPFC = setback_FB_mPFC, 
+         VS = setback_VS) %>%
+  select(-starts_with("choice"), -starts_with("reward"), 
+         -starts_with("feedback"), -starts_with("reward_setback")) %>%
+  gather(key = "ROI", value = "setback_beta",  vmPFC, mPFC, VS,  Amyg) %>%
+  select(SUBJECTID, ROI, setback_beta) %>%
+  filter(!is.na(setback_beta))
+
+# combine them in long format
+FB_df <- merge(reward_df, setback_df, by = c("SUBJECTID", "ROI")) %>%
+  mutate(reward_minus_setback = reward_beta - setback_beta,
+        ROI = factor(ROI, levels = FB_level_order),
+         AGE.c = AGE.x - mean(AGE.x, na.rm = T),
+         SEX.c = SEX.x - mean(SEX.x, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+         GROUP_ECA.c = ifelse(GROUP_ECA == "COMP", -1, 1), 
+        PC1_log.c = PC1_log -mean(PC1_log), 
+        diff_pos_affect = win_feeling - lose_feeling) %>%
+  gather(key = "contrast", value = "beta", reward_beta, setback_beta, reward_minus_setback) %>%
+  filter(!is.na(beta)) %>%
+  select(SUBJECTID, beta, contrast, ROI, Fam_inc_needs.c, IQ.c, 
+         AGE.c, SEX.c, total_TRs_censored.c, Reinforce_rate.c, 
+         GROUP_ECA.c, GROUP_ECA, PC1_log.c, PC1_log, 
+         perceived_control, perceived_effort_ave, perceived_reinforce, 
+         diff_pos_affect, frustrated, motivated, sleepy, fun) %>%
+  na.omit() 
+
+# rename levels of contrast factor
+FB_df$contrast <- as.factor(ifelse(FB_df$contrast == "reward_beta", "reward", ifelse(FB_df$contrast == "setback_beta", "setback", FB_df$contrast)))
+
+length(unique(FB_df$SUBJECTID))
+```
+
+plot before removing outliers
+```{r}
+ggplot(data = FB_df, aes(x = contrast, y = beta, color = contrast)) + 
+  geom_point(position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+    theme_bw() + facet_grid(~ROI) + my_colors + my_colors2 
+
+```
+
+clean data
+```{r}
+# calculate limits fo routliers at 3SD from mean
+FB_outliers <- FB_df %>%
+  group_by(ROI, contrast) %>%
+  dplyr::summarize(outlier_upper = mean(beta) + 3*sd(beta), 
+            outlier_lower = mean(beta)- 3*sd(beta))
+
+# mark outliers for each ROI
+FB_df2 <- data.frame()
+for (region in unique(FB_outliers$ROI)){
+  #region = "choice_mPFC"
+  #print(region)
+  for (cope in unique(FB_outliers$contrast)){
+   # print(cope)
+      #cope = "reward_minus_setback"
+      check <- FB_df %>% filter(ROI == region & contrast == cope) %>%
+      mutate(FB_outlier = ifelse(beta > FB_outliers$outlier_upper[FB_outliers$ROI == region & FB_outliers$contrast == cope] | 
+                                 beta < FB_outliers$outlier_lower[FB_outliers$ROI == region & FB_outliers$contrast == cope], 1, 0))
+      FB_df2 <- rbind(FB_df2, check)
+  }
+}
+
+# look at outlier #
+outlier_table <- FB_df2 %>%
+  group_by(ROI, contrast) %>%
+  dplyr::summarize(n = n(), 
+            n_outlier = sum(FB_outlier))
+# idk why i ahve to do thsi!! 
+outlier_table$n <- outlier_table$n 
+outlier_table$n_outlier <- outlier_table$n_outlier
+
+outlier_table
+# remove data of outliers 
+FB_df2 <- FB_df2 %>% 
+  mutate(beta = ifelse(FB_outlier > 0 , NA, beta))
+sum(is.na(FB_df2$beta))
+FB_outlier_subjects <- FB_df2 %>% 
+  filter(FB_outlier == 1) %>% select(SUBJECTID, ROI, contrast)
+
+#FB_outlier_subjects
+save(FB_outlier_subjects, file = "tables/Feedback_betas_outlier_subjects.Rdata")
+```
+
+# Reward- Setback contrast
+## Group x FB effects 
+
+```{r}
+FB_df3 <- FB_df2 %>%
+  filter(contrast == "reward_minus_setback")  %>%
+  na.omit() # remove outlier subs
+nrow(FB_df3)
+summary(FB_df3$ROI)
+```
+
+```{r}
+# vmPFC
+mod2_vmPFC <- lm(beta ~ GROUP_ECA.c +AGE.c + SEX.c+ 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                       #   frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c,
+                data = subset(FB_df3,  ROI == "vmPFC"))
+FB_diff_vmPFC <- summary(mod2_vmPFC)$coefficients[1,]
+FB_diffXGROUP_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+FB_diff_pe_vmPFC <- summary(mod2_vmPFC)$coefficients[7,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ GROUP_ECA.c  + AGE.c + SEX.c+ 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                       #   frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c,
+                data = subset(FB_df3,  ROI == "mPFC"))
+
+FB_diff_mPFC <- summary(mod2_mPFC)$coefficients[1,]
+FB_diffXGROUP_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+FB_diff_pe_mPFC <- summary(mod2_mPFC)$coefficients[7,]
+
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ GROUP_ECA.c  + AGE.c + SEX.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                       #   frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c,
+                data = subset(FB_df3, ROI == "Amyg"))
+FB_diff_Amyg <- summary(mod2_Amyg)$coefficients[1,]
+FB_diffXGROUP_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+FB_diff_pe_Amyg <- summary(mod2_Amyg)$coefficients[7,]
+
+# VS  
+mod2_VS <- lm(beta ~ GROUP_ECA.c  +  AGE.c + SEX.c+ 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                       #   frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c,
+                data = subset(FB_df3, ROI == "VS"))
+FB_diff_VS <- summary(mod2_VS)$coefficients[1,]
+FB_diffXGROUP_VS <- summary(mod2_VS)$coefficients[2,]
+FB_diff_pe_VS <- summary(mod2_VS)$coefficients[7,]
+
+```
+
+### table of main effects
+```{r}
+
+# main effects table
+table_FB_diff_activation <- data.frame(rbind(FB_diff_vmPFC, FB_diff_mPFC, FB_diff_VS, FB_diff_Amyg)) 
+table_FB_diff_activation$level <- rownames(table_FB_diff_activation)
+
+table_FB_diff_activation <- table_FB_diff_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual ) %>%
+  select(level, Estimate, SE, df, t_value, p_value, sig)
+
+table_FB_diff_activation
+save(table_FB_diff_activation, file = "model_results/FB_diff_activation_model_results.Rdata")
+```
+
+### table of ECA effects (Amyg SIG)
+```{r}
+# effect of group 
+table_FB_diffXGROUP_activation <- data.frame(rbind(FB_diffXGROUP_vmPFC, FB_diffXGROUP_mPFC, FB_diffXGROUP_VS, FB_diffXGROUP_Amyg)) 
+table_FB_diffXGROUP_activation$level <- rownames(table_FB_diffXGROUP_activation)
+
+table_FB_diffXGROUP_activation <- table_FB_diffXGROUP_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual, 
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+
+table_FB_diffXGROUP_activation
+save(table_FB_diffXGROUP_activation, file = "model_results/FB_diffXGROUP_activation_model_results.Rdata")
+```
+
+### table of perceived effort effects (Amyg trend)
+```{r}
+# effect of group 
+table_FB_diff_pe_activation <- data.frame(rbind(FB_diff_pe_vmPFC, FB_diff_pe_mPFC, FB_diff_pe_VS, FB_diff_pe_Amyg)) 
+table_FB_diff_pe_activation$level <- rownames(table_FB_diff_pe_activation)
+
+table_FB_diff_pe_activation <- table_FB_diff_pe_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual, 
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+
+table_FB_diff_pe_activation
+save(table_FB_diff_pe_activation, file = "model_results/FB_diff_pe_activation_model_results.Rdata")
+```
+
+### plot of main effects 
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+effect_df <- table_FB_diff_activation %>%
+  rename(fit = Estimate) %>%
+  mutate(upper = fit + SE * 2, 
+         lower = fit -SE *2,
+         ROI = ifelse(grepl("vmPFC", level), "vmPFC", 
+                      ifelse(grepl("mPFC", level), "mPFC", 
+                             ifelse(grepl("VS", level), "VS", 
+                                    ifelse(grepl("Amyg", level), "Amyg", "fix")))))
+
+
+plot_effect <- ggplot(data = effect_df,
+                      aes(x = factor(ROI, FB_level_order), y = fit)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+                                 alpha = 0.2, fill = dark_blue) + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_point(data = FB_df3,  aes(x = factor(ROI, FB_level_order), y = beta), 
+             position = position_dodge(.9), alpha = 0.25, color = dark_blue) + 
+  theme(legend.position = "none") + #ylim(-200, 200)+ 
+  ylab("Response to Rewards-Setbacks") + xlab ("ROI") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_diff_main_effects.png", width = 6, height = 4)
+
+```
+
+### plot of ECA effects (Amyg trend)
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("GROUP_ECA.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("GROUP_ECA.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("GROUP_ECA.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("GROUP_ECA.c", mod2_Amyg, confint = T)) 
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) %>%
+  mutate(GROUP_ECA = ifelse(GROUP_ECA.c == -1, "COMP", 
+                        ifelse(GROUP_ECA.c == 1, "ECA", NA))) %>%
+  filter(!is.na(GROUP_ECA))
+
+
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = GROUP_ECA, y = fit, fill = GROUP_ECA)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.3) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.4) +
+  geom_point(data = FB_df3, aes(x = GROUP_ECA, y = beta, color = GROUP_ECA), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to rewards -setbacks") + xlab ("GROUP") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_diffXGROUP.png", width = 6, height = 4)
+
+```
+
+### plot of perceived effort effects (Amyg trend)
+if you think that the game is harder overall, you have greater vmPFC for rewards > setbacks
+so perceived effort influences reward sensitivity in vmPFC 
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("perceived_effort_ave", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("perceived_effort_ave", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("perceived_effort_ave", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("perceived_effort_ave", mod2_Amyg, confint = T)) 
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg)
+
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = perceived_effort_ave, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, fill = dark_blue) +
+  geom_point(data = FB_df3, aes(x = perceived_effort_ave, y = beta, color = dark_blue), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to rewards - setbacks") + xlab ("Average Perceived Effort") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_diff_perceived_effort.png", width = 6, height = 4)
+
+```
+
+## PC1 x FB effects
+
+```{r}
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                       #   frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c,              
+                 data = subset(FB_df3, ROI == "vmPFC"))
+FB_diff_sqrt_vmPFC <- summary(mod2_vmPFC)$coefficients[1,]
+FB_diffXPC1_log_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+FB_diff_PC1_pe_vmPFC <- summary(mod2_vmPFC)$coefficients[7,]
+
+# MPFC: frustrated trend.
+mod2_mPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                       #   frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c,              
+                data = subset(FB_df3,  ROI == "mPFC"))
+FB_diff_sqrt_mPFC <- summary(mod2_mPFC)$coefficients[1,]
+FB_diffXPC1_log_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+FB_diff_PC1_pe_mPFC <- summary(mod2_mPFC)$coefficients[7,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                        motivated, # + #perceived_control +   frustrated + 
+                       # perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                  # Fam_inc_needs.c  + IQ.c,                      
+                data = subset(FB_df3,  ROI == "Amyg"))
+FB_diff_sqrt_Amyg <- summary(mod2_Amyg)$coefficients[1,]
+FB_diffXPC1_log_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+FB_diff_PC1_pe_Amyg <- summary(mod2_Amyg)$coefficients[7,]
+
+# VS  
+mod2_VS <- lm(beta ~ PC1_log.c +  AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                      #frustrated + motivated + perceived_control +
+                        perceived_effort_ave,# + perceived_reinforce + diff_pos_affect,
+                data = subset(FB_df3, ROI == "VS"))
+FB_diff_sqrt_VS <- summary(mod2_VS)$coefficients[1,]
+FB_diffXPC1_log_VS <- summary(mod2_VS)$coefficients[2,]
+FB_diff_PC1_pe_VS <- summary(mod2_VS)$coefficients[7,]
+```
+
+### main effects table 
+```{r}
+# main effects (intercept, represents difference score)
+
+table_FB_diff_activation <- data.frame(rbind(FB_diff_vmPFC, FB_diff_mPFC, FB_diff_VS, FB_diff_Amyg)) 
+table_FB_diff_activation$level <- rownames(table_FB_diff_activation)
+
+table_FB_diff_activation <- table_FB_diff_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+#save(table_FB_diff_activation, file = "model_results/FB_diff_activation_model_results.Rdata")
+table_FB_diff_activation
+```
+
+### table of cumulative ECA score (NS)
+```{r}
+
+## effect of PC1
+table_FB_diffXPC1_log_activation <- data.frame(rbind(FB_diffXPC1_log_vmPFC, FB_diffXPC1_log_mPFC, FB_diffXPC1_log_VS, FB_diffXPC1_log_Amyg)) 
+table_FB_diffXPC1_log_activation$level <- rownames(table_FB_diffXPC1_log_activation)
+
+table_FB_diffXPC1_log_activation <- table_FB_diffXPC1_log_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_FB_diffXPC1_log_activation
+save(table_FB_diffXPC1_log_activation, file = "model_results/FB_diffXPC1_log_activation_model_results.Rdata")
+```
+
+### table of perceived effort (NS)
+```{r}
+
+table_FB_diff_PC1_pe_activation <- data.frame(rbind(FB_diff_PC1_pe_vmPFC, FB_diff_PC1_pe_mPFC, FB_diff_PC1_pe_VS, FB_diff_PC1_pe_Amyg)) 
+table_FB_diff_PC1_pe_activation$level <- rownames(table_FB_diff_PC1_pe_activation)
+
+table_FB_diff_PC1_pe_activation <- table_FB_diff_PC1_pe_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_FB_diff_PC1_pe_activation
+save(table_FB_diff_PC1_pe_activation, file = "model_results/FB_diff_PC1_pe_activation_model_results.Rdata")
+```
+
+
+### plot of cumualtive ECA effects (NS)
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("PC1_log.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("PC1_log.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("PC1_log.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("PC1_log.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = PC1_log.c, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = FB_df3, aes(x = PC1_log.c, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Reward-Setback Activation") + xlab ("Cumulative ECA Score") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_diffXPC1_log.png", width = 6, height = 4)
+
+```
+
+### plot of perceived effort effects (NS)
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("perceived_effort_ave", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("perceived_effort_ave", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("perceived_effort_ave", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("perceived_effort_ave", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = perceived_effort_ave, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = FB_df3, aes(x = perceived_effort_ave, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Reward-Setback Activation") + xlab ("Average Perceived Effort") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_diff_PC1_pe.png", width = 6, height = 4)
+
+```
+
+# Setback only 
+## Group effects for setbacks
+
+```{r}
+
+FB_df3 <- FB_df2 %>%
+  filter(contrast == "setback") %>% 
+  na.omit() 
+nrow(FB_df3)
+summary(FB_df3$ROI)
+```
+
+## model data 
+```{r}
+
+# vmPFC: perceived effort is significant for setbacks! 
+mod2_vmPFC <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c +# 
+                 frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c, 
+                data = subset(FB_df3,  ROI == "vmPFC"))
+FB_setback_GROUP_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+FB_setback_pe_vmPFC <- summary(mod2_vmPFC)$coefficients[7,]
+
+# MPFC: sig age effects and trend frustrated effects.
+mod2_mPFC <- lm(beta ~ GROUP_ECA.c + AGE.c + #SEX.c +# 
+                 frustrated, # + motivated, #+ #perceived_control + 
+                        #perceived_effort_ave, #+ # perceived_reinforce + diff_pos_affect,
+                  # Fam_inc_needs.c  + IQ.c, 
+                data = subset(FB_df3,  ROI == "mPFC"))
+FB_setback_GROUP_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+FB_setback_pe_mPFC <- summary(mod2_mPFC)$coefficients[7,]
+
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c +# 
+                 frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c, 
+                data = subset(FB_df3, ROI == "Amyg"))
+FB_setback_GROUP_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+FB_setback_pe_Amyg <- summary(mod2_Amyg)$coefficients[7,]
+
+# VS  
+mod2_VS <- lm(beta ~ GROUP_ECA.c +  AGE.c + SEX.c ++# 
+                 frustrated + motivated + perceived_control + 
+                        perceived_effort_ave + # perceived_reinforce + diff_pos_affect,
+                   Fam_inc_needs.c  + IQ.c, 
+                data = subset(FB_df3, ROI == "VS"))
+FB_setback_GROUP_VS <- summary(mod2_VS)$coefficients[2,]
+FB_setback_pe_VS <- summary(mod2_VS)$coefficients[7,]
+```
+
+## table of group effects (Sig amyg effect)
+```{r}
+table_FB_setback_GROUP_activation <- data.frame(rbind(FB_setback_GROUP_vmPFC, FB_setback_GROUP_mPFC, FB_setback_GROUP_VS, FB_setback_GROUP_Amyg)) 
+table_FB_setback_GROUP_activation$level <- rownames(table_FB_setback_GROUP_activation)
+
+table_FB_setback_GROUP_activation <- table_FB_setback_GROUP_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+table_FB_setback_GROUP_activation
+save(table_FB_setback_GROUP_activation, file = "model_results/FB_setback_GROUP_activation_model_results.Rdata")
+```
+
+## table of perceived effort effects (NS)
+```{r}
+table_FB_setback_pe_activation <- data.frame(rbind(FB_setback_pe_vmPFC, FB_setback_pe_mPFC, FB_setback_pe_VS, FB_setback_pe_Amyg)) 
+table_FB_setback_pe_activation$level <- rownames(table_FB_setback_pe_activation)
+
+table_FB_setback_pe_activation <- table_FB_setback_pe_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+table_FB_setback_pe_activation
+save(table_FB_setback_pe_activation, file = "model_results/FB_setback_pe_activation_model_results.Rdata")
+```
+
+plot for all ROIs
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("GROUP_ECA.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("GROUP_ECA.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("GROUP_ECA.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("GROUP_ECA.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) %>%
+  mutate(GROUP_ECA = ifelse(GROUP_ECA.c == -1, "COMP", 
+                        ifelse(GROUP_ECA.c == 1, "ECA", NA))) %>%
+  filter(!is.na(GROUP_ECA))
+
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = GROUP_ECA, y = fit, fill = GROUP_ECA)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.3) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.4) +
+  geom_point(data = FB_df3, aes(x = GROUP_ECA, y = beta, color = GROUP_ECA), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to setback") + xlab ("GROUP") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_setback_GROUP.png", width = 6, height = 4)
+```
+
+### plot for perceived effort effect (NS)
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("perceived_effort_ave", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("perceived_effort_ave", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("perceived_effort_ave", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("perceived_effort_ave", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg)
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = perceived_effort_ave, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) +
+  geom_point(data = FB_df3, aes(x = perceived_effort_ave, y = beta), color  = dark_blue, 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to setback") + xlab ("Average perceived effort") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_setback_perceived_effort.png", width = 6, height = 4)
+```
+
+
+## PC1 setback only 
+```{r}
+amyg_check <- FB_df %>% filter(ROI == "Amyg" & contrast == "setback")  %>%
+  select(ROI, contrast, beta, SUBJECTID)
+save(amyg_check, file = "amyg_setback_check.Rdata")
+
+# vmPFC: trend for perceived effort.
+mod2_vmPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c + #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                    # frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3, ROI == "vmPFC" & !is.na(IQ.c)))
+FB_setback_PC1_log_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+FB_setback_PC1_pe_vmPFC <- summary(mod2_vmPFC)$coefficients[7,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c + # IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                    #  frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3,  ROI == "mPFC"& !is.na(IQ.c)))
+FB_setback_PC1_log_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+FB_setback_PC1_pe_mPFC <- summary(mod2_mPFC)$coefficients[7,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~   PC1_log.c + AGE.c  + SEX.c + # IQ.c +
+                       total_TRs_censored.c +  Reinforce_rate.c + 
+                      #frustrated + #perceived_control +  motivated +  
+                      perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3,  ROI == "Amyg"))
+FB_setback_PC1_log_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+FB_setback_PC1_pe_Amyg <- summary(mod2_Amyg)$coefficients[7,]
+
+# VS  
+mod2_VS <- lm(beta ~ PC1_log.c +  AGE.c + SEX.c +# IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c + 
+                    #  frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3, ROI == "VS"& !is.na(IQ.c)))
+FB_setback_PC1_log_VS <- summary(mod2_VS)$coefficients[2,]
+FB_setback_PC1_pe_VS <- summary(mod2_VS)$coefficients[7,]
+
+```
+
+### table for continuous ECA effect
+```{r}
+
+table_FB_setback_PC1_log_activation <- data.frame(rbind(FB_setback_PC1_log_vmPFC, FB_setback_PC1_log_mPFC, FB_setback_PC1_log_VS, FB_setback_PC1_log_Amyg)) 
+table_FB_setback_PC1_log_activation$level <- rownames(table_FB_setback_PC1_log_activation)
+
+table_FB_setback_PC1_log_activation <- table_FB_setback_PC1_log_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_FB_setback_PC1_log_activation
+save(table_FB_setback_PC1_log_activation, file = "model_results/FB_setback_PC1_log_activation_model_results_changed.Rdata")
+
+#load("model_results/FB_setback_PC1_log_activation_model_results.Rdata")
+```
+
+
+### table for perceived effort
+```{r}
+
+table_FB_setback_PC1_pe_activation <- data.frame(rbind(FB_setback_PC1_pe_vmPFC, FB_setback_PC1_pe_mPFC, FB_setback_PC1_pe_VS, FB_setback_PC1_pe_Amyg)) 
+table_FB_setback_PC1_pe_activation$level <- rownames(table_FB_setback_PC1_pe_activation)
+
+table_FB_setback_PC1_pe_activation <- table_FB_setback_PC1_pe_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_FB_setback_PC1_pe_activation
+save(table_FB_setback_PC1_pe_activation, file = "model_results/FB_setback_PC1_pe_activation_model_results.Rdata")
+
+```
+
+
+### plot effect of PC1
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("PC1_log.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("PC1_log.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("PC1_log.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("PC1_log.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = PC1_log.c, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = FB_df3, aes(x = PC1_log.c, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Response to setback") + xlab ("Cumulative ECA Score") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_setback_PC1_log_changed.png", width = 6, height = 4)
+```
+
+
+### plot effect of perceived effort
+effect overlaps with ECA because they are correlated. 
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("perceived_effort_ave", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("perceived_effort_ave", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("perceived_effort_ave", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("perceived_effort_ave", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = perceived_effort_ave, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = FB_df3, aes(x = perceived_effort_ave, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Response to setback") + xlab ("Average Perceived Effort") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_setback_PC1_perceived_effort.png", width = 6, height = 4)
+```
+
+# Reward only 
+## Group effects -reward
+vmFPC is SIG for with full sample, IQ, and IQ sample without IQ.
+mPFC is only sig with IQ 
+```{r}
+FB_df3 <- FB_df2 %>%
+  filter(contrast == "reward") %>%
+  na.omit()
+nrow(FB_df3)
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ GROUP_ECA.c +AGE.c + SEX.c+ #IQ.c + + 
+                 #  frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3,  ROI == "vmPFC"))
+FB_reward_GROUP_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ GROUP_ECA.c  + AGE.c + SEX.c+ #IQ.c + + 
+                 #  frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3,  ROI == "mPFC"))
+FB_reward_GROUP_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ GROUP_ECA.c  + AGE.c + SEX.c+ #IQ.c + + 
+                 #  frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3, ROI == "Amyg"))
+FB_reward_GROUP_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ GROUP_ECA.c  +  AGE.c + SEX.c+ #IQ.c + + 
+                 #  frustrated + motivated + perceived_control + 
+                        perceived_effort_ave, # + perceived_reinforce + diff_pos_affect,  
+                data = subset(FB_df3, ROI == "VS"))
+FB_reward_GROUP_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_FB_reward_GROUP_activation <- data.frame(rbind(FB_reward_GROUP_vmPFC, FB_reward_GROUP_mPFC, FB_reward_GROUP_VS, FB_reward_GROUP_Amyg)) 
+table_FB_reward_GROUP_activation$level <- rownames(table_FB_reward_GROUP_activation)
+```
+
+### table for ECA group effects
+```{r}
+table_FB_reward_GROUP_activation <- table_FB_reward_GROUP_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+table_FB_reward_GROUP_activation
+save(table_FB_reward_GROUP_activation, file = "model_results/FB_reward_GROUP_activation_model_results.Rdata")
+```
+
+### plot for ECA group effects
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("GROUP_ECA.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("GROUP_ECA.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("GROUP_ECA.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("GROUP_ECA.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) %>%
+  mutate(GROUP_ECA = ifelse(GROUP_ECA.c == -1, "COMP", 
+                        ifelse(GROUP_ECA.c == 1, "ECA", NA))) %>%
+  filter(!is.na(GROUP_ECA))
+ 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = GROUP_ECA, y = fit, fill = GROUP_ECA)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.3) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.4) +
+  geom_point(data = FB_df3, aes(x = GROUP_ECA, y = beta, color = GROUP_ECA), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to reward") + xlab ("GROUP") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_reward_GROUP.png", width = 6, height = 4)
+
+```
+
+
+## PC1 reward only 
+
+```{r}
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c + #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(FB_df3, ROI == "vmPFC"& !is.na(IQ.c)))
+FB_reward_PC1_log_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c + #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(FB_df3,  ROI == "mPFC" & !is.na(IQ.c)))
+FB_reward_PC1_log_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ PC1_log.c  + AGE.c + SEX.c + #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(FB_df3,  ROI == "Amyg" & !is.na(IQ.c)))
+FB_reward_PC1_log_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ PC1_log.c  +  AGE.c + SEX.c + #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(FB_df3, ROI == "VS" & !is.na(IQ.c)))
+FB_reward_PC1_log_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_FB_reward_PC1_log_activation <- data.frame(rbind(FB_reward_PC1_log_vmPFC, FB_reward_PC1_log_mPFC, FB_reward_PC1_log_VS, FB_reward_PC1_log_Amyg)) 
+table_FB_reward_PC1_log_activation$level <- rownames(table_FB_reward_PC1_log_activation)
+```
+
+
+### table for cumulative ECA effects
+```{r}
+table_FB_reward_PC1_log_activation <- table_FB_reward_PC1_log_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_FB_reward_PC1_log_activation
+save(table_FB_reward_PC1_log_activation, file = "model_results/FB_reward_PC1_log_activation_model_results.Rdata")
+```
+
+
+### plot for cumulative ECA effects
+```{r}
+FB_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("PC1_log.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("PC1_log.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("PC1_log.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("PC1_log.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = PC1_log.c, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = FB_df3, aes(x = PC1_log.c, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Response to reward") + xlab ("Cumulative ECA Score") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_FB_reward_PC1_log.png", width = 6, height = 4)
+```
+
+# Hypothesis 3a follow-up: Hard rewards vs. hard setbacks
+
+## set up & clean data
+```{r} 
+
+#organize data for choice phase.
+hard_FB_contrast_df <- beh_scan_ECA_wide %>%
+  # combine left and right accumbens betas into bilateral! 
+  select(-starts_with("feedback"),  -contains("easy"), -contains("choice")) %>%
+  gather(key = "ROI", value = "beta", 
+         hard_reward_vmPFC, hard_setback_vmPFC, hard_reward_setback_vmPFC,
+         hard_reward_FB_mPFC, hard_setback_FB_mPFC, hard_reward_setback_FB_mPFC,
+         hard_reward_VS, hard_setback_VS, hard_reward_setback_VS,
+                  hard_reward_Amyg, hard_setback_Amyg, hard_reward_setback_Amyg) %>%
+  mutate(contrast = as.factor(ifelse(grepl("reward_setback", ROI), "reward_setback",
+                           ifelse(grepl("reward", ROI), "reward", "setback"))),
+           ROI = as.factor(ifelse(grepl("vmPFC", ROI), "vmPFC", 
+                        ifelse(grepl("mPFC", ROI), "mPFC",
+                               ifelse(grepl("VS", ROI), "VS", "Amyg")))),
+           AGE.c = AGE.x - mean(AGE.x, na.rm = T),
+         SEX.c = SEX.x - mean(SEX.x, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T),
+         GROUP_ECA.c = ifelse(GROUP_ECA == "COMP", -1, 1),
+         PC1_log.c = PC1_log - mean(PC1_log)) %>%
+  filter(!is.na(beta))
+# number of subjects = 89 
+length(unique(hard_FB_contrast_df$SUBJECTID))
+
+summary(hard_FB_contrast_df$contrast)
+
+```
+
+```{r}
+ggplot(data = hard_FB_contrast_df, aes(x = contrast, y = beta, color = contrast)) + 
+  geom_point(position = position_dodge(.9),
+             alpha = 0.25) + theme(legend.position = "none") +
+    theme_bw() + facet_grid(~ROI) + my_colors + my_colors2 
+
+```
+
+remove outliers
+```{r}
+# calculate limits fo routliers at 3SD from mean
+hard_FB_outliers <- hard_FB_contrast_df %>%
+  filter(!is.na(beta)) %>%
+  group_by(ROI, contrast) %>%
+  dplyr::summarize(outlier_upper = mean(beta) + 3*sd(beta), 
+            outlier_lower = mean(beta)- 3*sd(beta))
+
+# mark outliers for each ROI
+hard_FB_contrast_df2 <- data.frame()
+for (region in unique(hard_FB_outliers$ROI)){
+  #region = "choice_mPFC"
+  #print(region)
+  for (cope in unique(hard_FB_outliers$contrast)){
+   # print(cope)
+      #cope = "reward_minus_setback"
+      check <- hard_FB_contrast_df %>% filter(ROI == region & contrast == cope) %>%
+      mutate(hard_FB_outlier = ifelse(beta > hard_FB_outliers$outlier_upper[hard_FB_outliers$ROI == region & hard_FB_outliers$contrast == cope] | 
+                                 beta < hard_FB_outliers$outlier_lower[hard_FB_outliers$ROI == region & hard_FB_outliers$contrast == cope], 1, 0))
+      hard_FB_contrast_df2 <- rbind(hard_FB_contrast_df2, check)
+  }
+}
+
+# look at outlier #
+hard_FB_outlier_table <- hard_FB_contrast_df2 %>%
+  filter(!is.na(beta)) %>%
+  group_by(ROI, contrast) %>%
+  dplyr::summarize(n = n(), 
+            n_outlier = sum(hard_FB_outlier))
+# idk why i ahve to do thsi!! 
+hard_FB_outlier_table$n <- hard_FB_outlier_table$n 
+hard_FB_outlier_table$n_outlier <- hard_FB_outlier_table$n_outlier
+
+hard_FB_outlier_table
+# remove data of outliers 
+hard_FB_contrast_df2 <- hard_FB_contrast_df2 %>% 
+  filter(!is.na(beta)) %>%
+  mutate(beta = ifelse(hard_FB_outlier > 0 , NA, beta))
+sum(is.na(hard_FB_contrast_df2$beta))
+hard_FB_outlier_subjects <- hard_FB_contrast_df2 %>% 
+  filter(hard_FB_outlier == 1) %>% select(SUBJECTID, ROI, contrast)
+
+hard_FB_outlier_subjects
+save(hard_FB_outlier_subjects, file = "tables/hard_FB_contrast_betas_outlier_subjects.Rdata")
+```
+
+
+## Group x hard FB effects 
+
+```{r}
+hard_FB_contrast_df3 <- hard_FB_contrast_df2 %>%
+  filter(contrast == "reward_setback") 
+nrow(hard_FB_contrast_df3)
+summary(hard_FB_contrast_df2$contrast)
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ GROUP_ECA.c +AGE.c + SEX.c+ #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3,  ROI == "vmPFC"))
+hard_FB_contrast_diffXGROUP_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c+ #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3,  ROI == "mPFC"))
+hard_FB_contrast_diffXGROUP_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c+ #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3, ROI == "Amyg"))
+hard_FB_contrast_diffXGROUP_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ GROUP_ECA.c +  AGE.c + SEX.c+ #IQ.c +
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "VS"))
+hard_FB_contrast_diffXGROUP_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_hard_FB_contrast_diffXGROUP_activation <- data.frame(rbind(hard_FB_contrast_diffXGROUP_vmPFC, hard_FB_contrast_diffXGROUP_mPFC, hard_FB_contrast_diffXGROUP_VS, hard_FB_contrast_diffXGROUP_Amyg)) 
+table_hard_FB_contrast_diffXGROUP_activation$level <- rownames(table_hard_FB_contrast_diffXGROUP_activation)
+
+table_hard_FB_contrast_diffXGROUP_activation <- table_hard_FB_contrast_diffXGROUP_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+table_hard_FB_contrast_diffXGROUP_activation
+save(table_hard_FB_contrast_diffXGROUP_activation, file = "model_results/hard_FB_contrast_diffXGROUP_activation_model_results.Rdata")
+```
+
+plot for all ROIs
+```{r}
+hard_FB_contrast_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("GROUP_ECA.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("GROUP_ECA.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("GROUP_ECA.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("GROUP_ECA.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) %>%
+  mutate(GROUP_ECA = ifelse(GROUP_ECA.c == -1, "COMP", 
+                        ifelse(GROUP_ECA.c == 1, "ECA", NA))) %>%
+  filter(!is.na(GROUP_ECA))
+
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = GROUP_ECA, y = fit, fill = GROUP_ECA)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.3) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.4) +
+  geom_point(data = hard_FB_contrast_df3, aes(x = GROUP_ECA, y = beta, color = GROUP_ECA), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to reward-setback") + xlab ("GROUP") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_hard_FB_contrast_diffXGROUP.png", width = 6, height = 3)
+```
+
+## PC1 x hard_FB_contrast effects
+
+```{r}
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "vmPFC"))
+hard_FB_contrast_diffXPC1_log_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3,  ROI == "mPFC"))
+hard_FB_contrast_diffXPC1_log_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3,  ROI == "Amyg"))
+hard_FB_contrast_diffXPC1_log_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ PC1_log.c +  AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "VS"))
+hard_FB_contrast_diffXPC1_log_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_hard_FB_contrast_diffXPC1_log_activation <- data.frame(rbind(hard_FB_contrast_diffXPC1_log_vmPFC, hard_FB_contrast_diffXPC1_log_mPFC, hard_FB_contrast_diffXPC1_log_VS, hard_FB_contrast_diffXPC1_log_Amyg)) 
+table_hard_FB_contrast_diffXPC1_log_activation$level <- rownames(table_hard_FB_contrast_diffXPC1_log_activation)
+
+table_hard_FB_contrast_diffXPC1_log_activation <- table_hard_FB_contrast_diffXPC1_log_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_hard_FB_contrast_diffXPC1_log_activation
+save(table_hard_FB_contrast_diffXPC1_log_activation, file = "model_results/hard_FB_contrast_diffXPC1_log_activation_model_results.Rdata")
+```
+
+
+Model 2 plot for all ROIs
+```{r}
+hard_FB_contrast_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("PC1_log.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("PC1_log.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("PC1_log.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("PC1_log.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = PC1_log.c, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = hard_FB_contrast_df3, aes(x = PC1_log.c, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Response to reward-setback") + xlab ("Cumulative ECA Score") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_hard_FB_contrast_diffXPC1_log.png", width = 6, height = 3)
+
+```
+
+
+## Group x hard setback only 
+
+```{r}
+hard_FB_contrast_df3 <- hard_FB_contrast_df2 %>%
+  filter(contrast == "setback") 
+nrow(hard_FB_contrast_df3)
+summary(hard_FB_contrast_df2$contrast)
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ GROUP_ECA.c +AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3,  ROI == "vmPFC"))
+hard_setbackXGROUP_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3,  ROI == "mPFC"))
+hard_setbackXGROUP_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3, ROI == "Amyg"))
+hard_setbackXGROUP_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ GROUP_ECA.c +  AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "VS"))
+hard_setbackXGROUP_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_hard_setbackXGROUP_activation <- data.frame(rbind(hard_setbackXGROUP_vmPFC, hard_setbackXGROUP_mPFC, hard_setbackXGROUP_VS, hard_setbackXGROUP_Amyg)) 
+table_hard_setbackXGROUP_activation$level <- rownames(table_hard_setbackXGROUP_activation)
+
+table_hard_setbackXGROUP_activation <- table_hard_setbackXGROUP_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_hard_setbackXGROUP_activation
+save(table_hard_setbackXGROUP_activation, file = "model_results/hard_setbackXGROUP_activation_model_results.Rdata")
+```
+
+plot for all ROIs
+```{r}
+hard_FB_contrast_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("GROUP_ECA.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("GROUP_ECA.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("GROUP_ECA.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("GROUP_ECA.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) %>%
+  mutate(GROUP_ECA = ifelse(GROUP_ECA.c == -1, "COMP", 
+                        ifelse(GROUP_ECA.c == 1, "ECA", NA))) %>%
+  filter(!is.na(GROUP_ECA))
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = GROUP_ECA, y = fit, fill = GROUP_ECA)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.3) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.4) +
+  geom_point(data = hard_FB_contrast_df3, aes(x = GROUP_ECA, y = beta, color = GROUP_ECA), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to setback") + xlab ("GROUP") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_hard_setbackXGROUP.png", width = 6, height = 3)
+```
+
+## PC1 x hard setback only 
+
+```{r}
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "vmPFC"))
+hard_setbackXPC1_log_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3,  ROI == "mPFC"))
+hard_setbackXPC1_log_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3,  ROI == "Amyg"))
+hard_setbackXPC1_log_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ PC1_log.c +  AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "VS"))
+hard_setbackXPC1_log_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_hard_setbackXPC1_log_activation <- data.frame(rbind(hard_setbackXPC1_log_vmPFC, hard_setbackXPC1_log_mPFC, hard_setbackXPC1_log_VS, hard_setbackXPC1_log_Amyg)) 
+table_hard_setbackXPC1_log_activation$level <- rownames(table_hard_setbackXPC1_log_activation)
+
+table_hard_setbackXPC1_log_activation <- table_hard_setbackXPC1_log_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_hard_setbackXPC1_log_activation
+save(table_hard_setbackXPC1_log_activation, file = "model_results/hard_setbackXPC1_log_activation_model_results.Rdata")
+```
+
+
+Model 2 plot for all ROIs
+```{r}
+hard_FB_contrast_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("PC1_log.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("PC1_log.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("PC1_log.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("PC1_log.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = PC1_log.c, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = hard_FB_contrast_df3, aes(x = PC1_log.c, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Response to setback") + xlab ("Cumulative ECA Score") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_hard_setbackXPC1_log.png", width = 6, height = 3)
+```
+
+
+## Group x hard reward only 
+
+```{r}
+hard_FB_contrast_df3 <- hard_FB_contrast_df2 %>%
+  filter(contrast == "reward") 
+nrow(hard_FB_contrast_df3)
+summary(hard_FB_contrast_df2$contrast)
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ GROUP_ECA.c +AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3,  ROI == "vmPFC"))
+hard_rewardXGROUP_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3,  ROI == "mPFC"))
+hard_rewardXGROUP_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ GROUP_ECA.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3, ROI == "Amyg"))
+hard_rewardXGROUP_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ GROUP_ECA.c +  AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "VS"))
+hard_rewardXGROUP_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_hard_rewardXGROUP_activation <- data.frame(rbind(hard_rewardXGROUP_vmPFC, hard_rewardXGROUP_mPFC, hard_rewardXGROUP_VS, hard_rewardXGROUP_Amyg)) 
+table_hard_rewardXGROUP_activation$level <- rownames(table_hard_rewardXGROUP_activation)
+
+table_hard_rewardXGROUP_activation <- table_hard_rewardXGROUP_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df =mod2_VS$df.residual,
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+
+table_hard_rewardXGROUP_activation
+save(table_hard_rewardXGROUP_activation, file = "model_results/hard_rewardXGROUP_activation_model_results.Rdata")
+```
+
+plot for all ROIs
+```{r}
+hard_FB_contrast_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("GROUP_ECA.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("GROUP_ECA.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("GROUP_ECA.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("GROUP_ECA.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) %>%
+  mutate(GROUP_ECA = ifelse(GROUP_ECA.c == -1, "COMP", 
+                        ifelse(GROUP_ECA.c == 1, "ECA", NA))) %>%
+  filter(!is.na(GROUP_ECA))
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = GROUP_ECA, y = fit, fill = GROUP_ECA)) + 
+                        geom_bar(stat = "identity", position=position_dodge(),
+alpha = 0.3) + theme_classic() + facet_grid (~ ROI) +
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.4) +
+  geom_point(data = hard_FB_contrast_df3, aes(x = GROUP_ECA, y = beta, color = GROUP_ECA), 
+           alpha = 0.25) + theme(legend.position = "none") + 
+  ylab("Response to reward") + xlab ("GROUP") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_hard_rewardXGROUP.png", width = 6, height = 3)
+```
+
+## PC1 x hard reward only 
+
+```{r}
+
+# vmPFC
+mod2_vmPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "vmPFC"))
+hard_rewardXPC1_log_vmPFC <- summary(mod2_vmPFC)$coefficients[2,]
+
+# MPFC
+mod2_mPFC <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3,  ROI == "mPFC"))
+hard_rewardXPC1_log_mPFC <- summary(mod2_mPFC)$coefficients[2,]
+
+# AMYGDALA
+mod2_Amyg <- lm(beta ~ PC1_log.c + AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c ,
+                data = subset(hard_FB_contrast_df3,  ROI == "Amyg"))
+hard_rewardXPC1_log_Amyg <- summary(mod2_Amyg)$coefficients[2,]
+
+# VS  
+mod2_VS <- lm(beta ~ PC1_log.c +  AGE.c + SEX.c+ #IQ.c + 
+                       total_TRs_censored.c + Reinforce_rate.c,
+                data = subset(hard_FB_contrast_df3, ROI == "VS"))
+hard_rewardXPC1_log_VS <- summary(mod2_VS)$coefficients[2,]
+
+table_hard_rewardXPC1_log_activation <- data.frame(rbind(hard_rewardXPC1_log_vmPFC, hard_rewardXPC1_log_mPFC, hard_rewardXPC1_log_VS, hard_rewardXPC1_log_Amyg)) 
+table_hard_rewardXPC1_log_activation$level <- rownames(table_hard_rewardXPC1_log_activation)
+
+table_hard_rewardXPC1_log_activation <- table_hard_rewardXPC1_log_activation %>%
+  rename(p_value = "Pr...t..", 
+         SE = "Std..Error", 
+         t_value = "t.value") %>%
+  mutate( sig =  ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", 
+                                         ifelse(p_value< 0.05, "*", ""))), 
+          df = mod2_VS$df.residual,
+          
+          lower = Estimate - 2*SE, 
+          upper = Estimate + 2*SE) %>%
+  select(level, Estimate, lower, upper, SE, df, t_value, p_value, sig)
+table_hard_rewardXPC1_log_activation
+save(table_hard_rewardXPC1_log_activation, file = "model_results/hard_rewardXPC1_log_activation_model_results.Rdata")
+```
+
+
+Model 2 plot for all ROIs
+```{r}
+hard_FB_contrast_level_order <- c("vmPFC", "mPFC", "VS","Nacc", "Amyg")
+
+effect_vmPFC <- data.frame(ROI = "vmPFC", effect("PC1_log.c", mod2_vmPFC, confint = T))
+effect_mPFC  <- data.frame(ROI = "mPFC",effect("PC1_log.c", mod2_mPFC, confint = T))
+effect_VS <- data.frame(ROI = "VS", effect("PC1_log.c", mod2_VS, confint = T))
+effect_amyg <- data.frame(ROI = "Amyg",effect("PC1_log.c", mod2_Amyg, confint = T))
+# merge them all together into one df
+effect_df <- rbind(effect_vmPFC, effect_mPFC, effect_VS,  effect_amyg) 
+# so we can plot! 
+plot_effect <- ggplot(data = effect_df, aes(x = PC1_log.c, y = fit)) + 
+                        geom_line(color = dark_blue) + theme_classic() + facet_grid (~ ROI) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_point(data = hard_FB_contrast_df3, aes(x = PC1_log.c, y = beta), 
+           alpha = 0.25, color = dark_blue) + theme(legend.position = "none") + 
+  ylab("Response to reward") + xlab ("Cumulative ECA Score") + my_colors2 + my_colors + 
+ geom_hline(yintercept=0, linetype="dashed",  size=.5)
+plot_effect
+
+ggsave(plot_effect, file = "figures/Aim1_hypothesis2a/All_ROIs_hard_rewardXPC1_log.png", width = 6, height = 3)
+
+
+```
+
+

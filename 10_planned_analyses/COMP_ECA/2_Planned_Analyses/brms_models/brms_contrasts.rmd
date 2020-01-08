@@ -1,0 +1,111 @@
+---
+title: "brms_contrasts"
+author: "Paul A. Bloom"
+date: "December 11, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(brms)
+library(tidyverse)
+```
+
+# Simulate some data (don’t worry too much about this part)
+
+```{r}
+# Number of subjects
+n = 20
+
+# intercept ~ N(20,5)
+baseline =11
+baselineBetweenSD = 3
+
+# distribution of within-subject sd across trials --- using uniform for now based on few subjects coded
+withinNoiseMin = 1
+withinNoiseMax = 3
+
+# effect of music 
+easyMean = 3
+easySd = 1
+
+# effect of time period
+setbackMean = 2
+setbackSd = 2
+
+
+setbackeasyInteraction = 5
+# Shape of one study
+trialsPerSub = 45
+cond = c('hard', 'easy')
+type = c('reward', 'setback')
+frame = expand.grid(id = 1:n, cond = cond, type = type, trial = 1:3)
+
+
+
+frame = frame %>%
+    dplyr::group_by(id) %>%
+    mutate(intercept = rnorm(1, baseline, baselineBetweenSD),
+           easyEffect = rnorm(1, easyMean, easySd),
+           subjectSpecificSD = runif(1, min = withinNoiseMin, withinNoiseMax),
+           setbackEffect = rnorm(1, setbackMean, setbackSd)) %>%
+    ungroup() 
+  
+  
+frame = mutate(frame, 
+                 outcome = intercept + rnorm(nrow(frame), 0, subjectSpecificSD) +
+                   #music effects
+                   ifelse(cond == 'easy', easyEffect, 0) + 
+                   # developmental effects
+                   ifelse(type == 'setback', setbackEffect, 0) +
+                   ifelse(type == 'setback' & cond == 'easy', setbackeasyInteraction, 0)) %>%
+  dplyr::select(id, cond, type, trial, outcome)
+  
+```
+
+# Run the model! 
+
+```{r, results = 'hide'}
+model = brm(data = frame, outcome ~ cond*type + (1|id), chains = 1)
+
+```
+
+# Check out model summary
+
+
+```{r}
+summary(model)
+fixef(model)
+# The default condition here is the hard one, so let's confirm that we can recover the effect of setback in the hard condition
+# It should look the SAME as the estimate for the typesetback parameter in the model summary
+# What this code is saying is 'estimate the effect of the intercept + 1*typesetback > intercept'
+(setbackEffectHard = hypothesis(model, "Intercept + typesetback = Intercept"))
+
+fixef(model)[3,1]
+```
+
+
+# Now, a little more tricky, let's get the effect of setback in the easy condition
+
+```{r}
+# This code should say 'estimate the effect of intercept + 1*typesetback + 1*condeasy + 1*condeasy*typesetback > intercept + 1*condeasy
+
+(setbackEffectEasy <- hypothesis(model, "Intercept + typesetback + condeasy + condeasy:typesetback = Intercept + condeasy"))
+
+
+# The estimate comes out the same as from the model fixed effects summary as well!
+fixef(model)[3,1] + fixef(model)[4,1]
+
+```
+
+But the added bonus to the hypothesis function is that we get uncertainty about that estimate of the effect in that specific condition
+
+# Session info for packages
+
+```{r}
+sessionInfo()
+
+```

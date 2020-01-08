@@ -1,0 +1,126 @@
+---
+title: "Bootstrap PCA"
+author: "Michelle VanTieghem"
+date: "October 29, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+#Notes:
+re-doing on Nov 7, 2019 with Paul's updated PCA pipeline with absolute value loadings instead of squared loadings. \
+redoing on Dec 1, 2019 with updated MICM variables. \
+updating on Dec 5, 2019 to include non-absolute value loadings.
+
+
+```{r, echo = F, message = F, warning = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(PCAmixdata)
+```
+
+# Load in cleaned & standardized & unlabeled data.data
+
+```{r}
+load("data/cleaned_ELV_for_dim_reduction.Rdata")
+```
+
+# Bootstrap the PCA
+
+```{r}
+# Setup: number of bootstraps and output dataframe
+nBoots = 1000
+bootFrame = data.frame(eigMat = rep(NA, nBoots), loadings = rep(NA, nBoots))
+
+# start loop to run PCA 1000 times with random sampling
+for (i in 1:nBoots){
+  blah = FALSE
+  while (blah == FALSE){
+    # get a sample of data
+    ind = sample(1:nrow(pacctNoLabelsCleaned), size = nrow(pacctNoLabelsCleaned), replace = TRUE)
+    bootSamples = pacctNoLabelsCleaned[ind, ]
+    # only proceed if the current bootstrap sample is usable: 
+    # must not have any variables that are all 0 or 1 (correlation would be NA)
+     if (!any(is.na(cor(bootSamples)))){
+      blah = TRUE # proceed with PCA!
+      }
+  } 
+  # end while loop, continue to run PCA
+  
+  # run the PCA
+  pcaMix1 = bootSamples %>%
+    PCAmix(., graph=FALSE, ndim = ncol(bootSamples))
+  
+  # Extract eigenvalue matrix, loadings, and subject-level predictions
+  bootFrame$eigMat[i] = list(pcaMix1$eig)
+  bootFrame$loadings[i] = list(abs(pcaMix1$quanti$coord))
+  bootFrame$subPreds[i] = list(pcaMix1$scores)
+  
+}
+
+
+save(bootFrame, file = 'output/pcaBootstrap.rda')
+```
+
+# PCA on full sample as 'template'
+
+```{r}
+pcaFull = PCAmix(pacctNoLabelsCleaned, graph = FALSE, ndim = ncol(pacctNoLabelsCleaned))
+pcaFullSample = list(pcaFull$eig, abs(pcaFull$quanti$coord))
+
+save(pcaFull, file = 'output/pcaFullSampleModel.rda')
+save(pcaFullSample, file = 'output/pcaFullSample.rda')
+
+# create a *key* linking subject numbers in the model with PACCT subject numbers
+pcaFullScores = data.frame(pcaFull$scores)
+pcaFullScores$subject= row.names(pcaFullScores)
+
+# add SUBIDS from original labeled data
+load("data/pacct_effort_w_labels.Rdata")
+# first confirm that identical dataset lengths
+identical(nrow(pcaFullScores), nrow(pacct_effort_w_labels))
+# now add the subids to the pca output 
+pcaFullScores$IDENT_SUBID = pacct_effort_w_labels$IDENT_SUBID
+
+save(pcaFullScores, file = 'output/pcaFullScoresKey.rda')
+```
+
+
+# How do we get the absolute value loadings?
+The way PCAmix calculates loadings (saved in the quanti.cor object) for a given component is to correlate the raw scores of a variable for each subject with the subject's predicted score (scores object) on that same component
+
+The sqload object is the squares of these loadings
+
+See: https://www.rdocumentation.org/packages/PCAmixdata/versions/3.1/topics/PCAmix
+```{r}
+# absolute value of the loading for MICM_LOS from teh fullsubject sample, for dimension 1
+abs(pcaFull$quanti$coord)[1]
+
+pcaFull$quanti$coord[1]
+
+# Just a demonstration of how loadings are calculated -- this should be the same as cell [1,1]
+# subject's MICM_LOS score for dimension 1 x their actual value for MICM_LOS
+cor(pcaFull$scores[,1], pacct_effort_w_labels$MICM_LOS)
+```
+
+# How do we get the non-absolute value loadings? (raw)
+```{r}
+regularLoadings = pcaFull$quanti$coord[, 1:5] %>%
+  as.data.frame() %>%
+  mutate(., vars = row.names(.)) %>%
+  tidyr::gather(., key = 'dimensions', value = 'loading', contains('dim'))
+
+save(regularLoadings, file = 'output/pcaFullLoadingsNotAbsVal.rda')
+
+ggplot(regularLoadings, aes(x = vars, y = loading)) +
+  geom_hline(yintercept = 0) +
+  geom_point() + 
+  facet_grid(~dimensions) + 
+  coord_flip() + 
+  theme_bw()
+
+```

@@ -1,0 +1,224 @@
+---
+title: "Brain-Behavior associations"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+*confound:* behavior varies by task version, so only including usable scan participants who were guaranteed to perform the task in scanner for both runs.
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R")
+```
+
+
+```{r}
+# load all data with PCA added!
+load("../1_PCA/data/all_pacct_effort_data_with_PCA.rda")
+
+```
+
+
+# effects of choice reactivity on choice behavior: NS
+Testing hypothesis from COMP pre-registration, that choice-related prefrontal activity would be associated with greater proportion of hard-effort choices.\
+
+clean data and remove outliers first! 
+```{r}
+beh_scan_ECA_long <- beh_scan_ECA_long %>%
+  filter(!is.na(choice_choice_mPFC))
+
+# these were calculated in Aim1_hypothesis1a
+load("tables/Choice_betas_outlier_wideects.Rdata")
+choice_mPFC_outliers <- choice_outlier_wideects %>% filter(ROI == "mPFC")
+choice_VS_outliers <- choice_outlier_wideects %>% filter(ROI == "VS")
+choice_ACC_outliers <- choice_outlier_wideects %>% filter(ROI == "ACC")
+
+
+```
+
+
+### mPFC and choices
+```{r}
+choice_mPFC_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + choice_choice_mPFC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% choice_mPFC_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_mPFC_mod_long)
+
+choice_mPFC_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + choice_choice_mPFC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% choice_mPFC_outliers$SUBJECTID))
+summary(choice_mPFC_mod_wide)
+
+```
+
+### ACC and choices
+```{r}
+choice_ACC_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + choice_ACC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% choice_ACC_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_ACC_mod_long)
+
+choice_ACC_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + choice_ACC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% choice_ACC_outliers$SUBJECTID))
+summary(choice_ACC_mod_wide)
+
+```
+
+
+
+### VS and choices
+```{r}
+choice_VS_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + choice_VS +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% choice_VS_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_VS_mod_long)
+
+choice_VS_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + choice_VS +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% choice_VS_outliers$SUBJECTID))
+summary(choice_VS_mod_wide)
+
+```
+
+
+# effects of FB ROIs on choice behavior: NS
+Testing hypothesis from COMP pre-registration, that reward-related VS reactivity would be associated with greater proportion of hard-effort choices.\
+clean data and remove outliers first 
+## remove outliers 
+```{r}
+load("tables/Feedback_betas_outlier_wideects.Rdata")
+reward_mPFC_outliers <- FB_outlier_wideects %>% filter(ROI == "mPFC" & contrast == "reward")
+reward_vmPFC_outliers <- FB_outlier_wideects %>% filter(ROI == "vmPFC" & contrast == "reward")
+reward_VS_outliers <- FB_outlier_wideects %>% filter(ROI == "VS" & contrast == "reward")
+reward_Amyg_outliers <- FB_outlier_wideects %>% filter(ROI == "Amyg" & contrast == "reward")
+
+reward_setback_mPFC_outliers <- FB_outlier_wideects %>% filter(ROI == "mPFC" & contrast == "reward_minus_setback")
+reward_setback_vmPFC_outliers <- FB_outlier_wideects %>% filter(ROI == "vmPFC" & contrast == "reward_minus_setback")
+reward_setback_VS_outliers <- FB_outlier_wideects %>% filter(ROI == "VS" & contrast == "reward_minus_setback")
+reward_setback_Amyg_outliers <- FB_outlier_wideects %>% filter(ROI == "Amyg" & contrast == "reward_minus_setback")
+```
+
+### VS to reward and choices
+```{r}
+choice_VS_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + reward_VS +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% reward_VS_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_VS_mod_long)
+
+choice_VS_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + reward_VS +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% reward_VS_outliers$SUBJECTID))
+summary(choice_VS_mod_wide)
+
+```
+
+
+### VS to reward-setback and choices
+```{r}
+choice_VS_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + reward_setback_VS +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% reward_setback_VS_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_VS_mod_long)
+
+choice_VS_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + reward_setback_VS +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% reward_setback_VS_outliers$SUBJECTID))
+summary(choice_VS_mod_wide)
+
+```
+
+
+### vmPFC to reward and choices
+```{r}
+choice_vmPFC_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + reward_vmPFC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% reward_vmPFC_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_vmPFC_mod_long)
+
+choice_vmPFC_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + reward_vmPFC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% reward_vmPFC_outliers$SUBJECTID))
+summary(choice_vmPFC_mod_wide)
+
+```
+
+
+### vmPFC to reward-setback and choices
+```{r}
+choice_vmPFC_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + reward_setback_vmPFC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% reward_setback_vmPFC_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_vmPFC_mod_long)
+
+choice_vmPFC_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + reward_setback_vmPFC +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% reward_setback_vmPFC_outliers$SUBJECTID))
+summary(choice_vmPFC_mod_wide)
+
+```
+
+
+### Amyg to reward and choices
+```{r}
+choice_Amyg_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + reward_Amyg +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% reward_Amyg_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_Amyg_mod_long)
+
+choice_Amyg_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + reward_Amyg +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% reward_Amyg_outliers$SUBJECTID))
+summary(choice_Amyg_mod_wide)
+
+```
+
+
+### Amyg to setback and choices*
+significant effect of ECA on amyg reactivity to setbacks. 
+```{r}
+choice_Amyg_mod_long <- glmer(Effort_Choice.n ~ PC1_sqrt + setback_Amyg +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c + #
+                      (1 + Trial_Number.c | SUBJECTID), 
+                     family = binomial,
+                    data = filter(beh_scan_ECA_long, ! SUBJECTID %in% reward_setback_Amyg_outliers$SUBJECTID),
+                    control = glmerControl(optimizer = "bobyqa"))
+summary(choice_Amyg_mod_long)
+
+choice_Amyg_mod_wide <- lm(prop_hard_choices ~ PC1_sqrt + reward_setback_Amyg +
+                       AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c,
+                    data = subset(beh_scan_ECA_wide, !SUBJECTID %in% reward_setback_Amyg_outliers$SUBJECTID))
+summary(choice_Amyg_mod_wide)
+
+```

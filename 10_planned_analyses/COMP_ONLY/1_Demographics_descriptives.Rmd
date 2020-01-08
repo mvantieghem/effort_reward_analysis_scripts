@@ -1,0 +1,365 @@
+---
+title: "Demographics & data checks for COMP paper"
+author: "Michelle.VanTieghem"
+date: "November 27, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    df_print: paged
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+
+# Load data 
+## only behavior
+from data_cleaning_for_analysis 
+```{r,  warnings = F, message = F}
+source("../../0_R_analysis_setup_file.R")
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+```
+
+## with scanning data 
+from data_cleaning_for_analysis 
+```{r}
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_wide_WSLS.Rdata")
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_scan_comp_long_WSLS.Rdata")
+
+```
+
+# DEMOGRAPHICS 
+
+## demo table for  behavior sample
+```{r}
+# confirm no one has WASI < 70
+#beh_comp_subj %>% filter(IQ < 70)
+
+comp_beh_demo_table <- beh_comp_subj %>%
+  summarize (N = n(), 
+             mean_age = round(mean(AGE, na.rm = T), 2),
+             sd_age = round(sd(AGE, na.rm = T), 2),
+             min_age = round(min(AGE, na.rm =T), 2),
+             max_age= round(max(AGE, na.rm = T),2),
+             N_female = sum(SEX, na.rm = T),
+             N_male = n() - sum(SEX, na.rm = T), 
+             mean_IQ = round(mean(IQ, na.rm = T),2),
+             sd_IQ = round(sd(IQ, na.rm = T),2), 
+             mean_fam_inc_needs = round(mean(Fam_inc_needs, na.rm = T), 2),
+             sd_fam_inc_needs = round(sd(Fam_inc_needs, na.rm = T),2),
+             perc_below_poverty = sum(ifelse(Fam_inc_needs < 1, 1, 0), na.rm = T)/n())
+
+```
+
+## demo table for scan sample
+```{r}
+comp_scan_demo_table <- beh_scan_comp_wide %>%
+  summarize (N = n(), 
+             mean_age = round(mean(AGE, na.rm = T), 2),
+             sd_age = round(sd(AGE, na.rm = T), 2),
+             min_age = round(min(AGE, na.rm =T), 2),
+             max_age= round(max(AGE, na.rm = T),2),
+             N_female = sum(SEX, na.rm = T),
+             N_male = n() - sum(SEX, na.rm = T), 
+             mean_IQ = round(mean(IQ, na.rm = T),2), 
+             sd_IQ = round(sd(IQ, na.rm = T),2),
+             mean_fam_inc_needs = round(mean(Fam_inc_needs, na.rm = T), 2),
+             sd_fam_inc_needs = round(sd(Fam_inc_needs, na.rm = T),2), 
+             perc_below_poverty = round(sum(ifelse(Fam_inc_needs < 1, 1, 0), na.rm = T)/n()))
+```
+
+## combined demo table 
+```{r}
+# combine them! 
+demo_table_pretty <- data.frame(t(rbind(comp_beh_demo_table, comp_scan_demo_table)))
+names(demo_table_pretty) <- c("Behavior", "Scanning")
+demo_table_pretty
+
+save(demo_table_pretty, file= "tables/1_demographics_descriptives/Demo_comp_behavior_and_scan.Rdata")
+demo_table_wide <-data.frame(t(demo_table_pretty))
+write.csv(demo_table_wide, file = "tables/1_demographics_descriptives/demo_table_pretty_wide_for_poster.csv")
+
+```
+
+## should I test whether demographics differ in scan sample vs. full sample?
+
+## plot age
+```{r}
+age_hist <- ggplot(data = beh_comp_subj, aes(x = AGE)) + 
+  geom_histogram(bins = 10, fill = dark_blue, alpha = 0.5) + theme_classic() 
+age_hist
+
+ggsave(age_hist,file = "figures/1_demographics_descriptives/comp_age_histogram.pdf", width = 3, height= 4)
+
+```
+
+## plot SES
+income to needs = total household income / poverty threshold for 2018
+living below poverty threshold if < 1 
+```{r}
+FIN_hist <- ggplot(data = beh_comp_subj, aes(x = Fam_inc_needs)) + 
+  geom_histogram(bins = 10, fill = dark_blue, alpha = 0.5) + theme_classic() +
+  geom_vline(xintercept = 1, linetype = "dashed") + xlab ("Family Income to Needs Ratio")
+
+FIN_hist
+ggsave(FIN_hist,file = "figures/1_demographics_descriptives/comp_fam_inc_needs_histogram.pdf", width = 3, height= 4)
+
+```
+
+
+## Age checks: differnces in # trials? yes!
+age is correlated with number of trials
+```{r}
+
+cor.test(beh_comp_subj$AGE, beh_comp_subj$N_trials)
+ggplot(data = beh_comp_subj, aes(x = AGE, y = N_trials)) + 
+  geom_jitter(alpha = 0.5) + geom_smooth()  + theme_classic () 
+
+```
+
+
+# Descriptive Statistics
+## post-scan questions
+```{r}
+#names(beh_comp_subj)
+mean_table <- beh_comp_subj %>% 
+  summarize(perceived_reinforce = mean(as.numeric(as.character(perceived_reinforce)), na.rm = T), 
+            perceived_control= mean(as.numeric(as.character(perceived_control)), na.rm = T), 
+            perceived_effort_hard = mean(as.numeric(as.character(hard_effort_perceived)), na.rm = T), 
+            perceived_effort_easy = mean(as.numeric(as.character(easy_effort_perceived)), na.rm = T), 
+            fun = mean(as.numeric(as.character(fun)), na.rm = T), 
+            motivated = mean(as.numeric(as.character(motivated)), na.rm = T), 
+            frustrated = mean(as.numeric(as.character(frustrated)), na.rm = T), 
+            sleepy = mean(as.numeric(as.character(sleepy)), na.rm = T), 
+            win_feeling = mean(as.numeric(as.character(win_feeling)), na.rm = T), 
+            lose_feeling = mean(as.numeric(as.character(lose_feeling)), na.rm = T))
+mean_table <- data.frame(t(mean_table))
+names(mean_table) <- "mean"
+
+sd_table <- beh_comp_subj %>% 
+  summarize(perceived_reinforce = sd(as.numeric(as.character(perceived_reinforce)), na.rm = T), 
+            perceived_control= sd(as.numeric(as.character(perceived_control)), na.rm = T), 
+            perceived_effort_hard = sd(as.numeric(as.character(hard_effort_perceived)), na.rm = T), 
+            perceived_effort_easy = sd(as.numeric(as.character(easy_effort_perceived)), na.rm = T), 
+            fun = sd(as.numeric(as.character(fun)), na.rm = T), 
+            motivated = sd(as.numeric(as.character(motivated)), na.rm = T), 
+            frustrated = sd(as.numeric(as.character(frustrated)), na.rm = T), 
+            sleepy = sd(as.numeric(as.character(sleepy)), na.rm = T), 
+            win_feeling = sd(as.numeric(as.character(win_feeling)), na.rm = T), 
+            lose_feeling = sd(as.numeric(as.character(lose_feeling)), na.rm = T))
+sd_table <- data.frame(t(sd_table))
+names(sd_table) <- "sd"
+sd_table$variable <- rownames(sd_table) 
+
+post_test_table <- cbind(mean_table, sd_table) %>%
+  select(variable, mean, sd)
+post_test_table
+
+save(post_test_table, file = "tables/1_demographics_descriptives/post_test_self_report_descriptives.Rdata")
+```
+
+## histograms of self-report data
+
+### perceived control
+```{r}
+df <- beh_comp_subj %>%
+  filter(!is.na(perceived_control)) %>%
+group_by(perceived_control) %>%
+  summarize(counts = n())
+
+pc_plot <- ggplot(df, aes(x = factor(perceived_control), y = counts)) + 
+    scale_x_discrete(labels = c("1" = "None", "2" = "Some", "3" = "Alot")) +
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab ("Perceived Control")
+
+pc_plot
+ggsave(pc_plot, file = "figures/1_demographics_descriptives/comp_perceived_control_histogram.pdf", width = 2.5, height= 4)
+
+```
+
+### reinforcement rate... 
+```{r}
+df <- beh_comp_subj %>%
+  filter(!is.na(perceived_reinforce)) %>%
+group_by(perceived_reinforce) %>%
+  summarize(counts = n())
+
+pc_plot <- ggplot(df, aes(x = factor(perceived_reinforce), y = counts)) + 
+    scale_x_discrete(labels = c("1" = "Less than half", "2" = "Half the time", "3" = "More than half")) +
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab ("Perceived Reinforcement")
+
+pc_plot
+ggsave(pc_plot, file = "figures/1_demographics_descriptives/comp_perceived_reinforcement_histogram.pdf", width = 3, height= 4)
+```
+
+
+### motivation  
+```{r}
+df <- beh_comp_subj %>%
+  filter(!is.na(motivated)) %>%
+group_by(motivated) %>%
+  summarize(counts = n())
+
+pc_plot <- ggplot(df, aes(x = factor(motivated), y = counts)) + 
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab ("Motivation")
+
+pc_plot
+ggsave(pc_plot, file = "figures/1_demographics_descriptives/comp_motivated_hist.pdf", width = 3, height= 4)
+
+```
+
+
+### frustrated  
+```{r}
+df <- beh_comp_subj %>%
+  filter(!is.na(frustrated)) %>%
+group_by(frustrated) %>%
+  summarize(counts = n())
+
+pc_plot <- ggplot(df, aes(x = factor(frustrated), y = counts)) + 
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab ("frustrated")
+
+pc_plot
+ggsave(pc_plot, file = "figures/1_demographics_descriptives/comp_frustrated_hist.pdf", width = 3, height= 4)
+```
+
+
+### win feeling (positive affect)
+```{r}
+df <- beh_comp_subj %>%
+  filter(!is.na(win_feeling)) %>%
+group_by(win_feeling) %>%
+  summarize(counts = n())
+
+pc_plot <- ggplot(df, aes(x = factor(win_feeling), y = counts)) + 
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab (" Win Feeling (positive affect)")
+
+pc_plot
+ggsave(pc_plot, file = "figures/1_demographics_descriptives/comp_win_feeling_hist.pdf", width = 3, height= 4)
+```
+
+
+### lose feeling (positive affect)
+```{r}
+df <- beh_comp_subj %>%
+  filter(!is.na(lose_feeling)) %>%
+group_by(lose_feeling) %>%
+  summarize(counts = n())
+
+pc_plot <- ggplot(df, aes(x = factor(lose_feeling), y = counts)) + 
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab ("Lose feeling (negative affect)")
+
+pc_plot
+ggsave(pc_plot, file = "figures/1_demographics_descriptives/comp_lose_feeling_hist.pdf", width = 3, height= 4)
+```
+
+
+## correlations of self-report data
+
+### perceived vs. actual reinforcement 
+```{r}
+# perceived reinforcement is correlated with actual reinforcement.
+reinforce_vars <- beh_comp_subj %>%
+  select(AGE, IQ, Reinforce_rate,  perceived_reinforce) 
+
+cor_table <- correlation(reinforce_vars)
+cor_table_reinforce <- summary(cor_table)
+cor_table_reinforce
+save(cor_table_reinforce, file = "tables/1_demographics_descriptives/corr_table_perceived_vs_actual_reinforcement.Rdata")
+
+reinforce_plot <- ggplot(data = beh_comp_subj, aes(x = Reinforce_rate, y = perceived_reinforce)) + 
+  geom_point(color = dark_blue, alpha = 0.3) + geom_smooth( method = "lm", color = dark_blue, fill = dark_blue) + 
+  theme_classic() + ylab(" Perceived Reinforcement Rate") + xlab ("Actual Reinforcement Rate")
+
+reinforce_plot
+ggsave(reinforce_plot, file = "figures/1_demographics_descriptives/corr_reinforce_plot.pdf", width = 4, height = 4)
+```
+
+### motivation correlated with perceived control 
+```{r}
+control <- beh_comp_subj %>%
+  filter(perceived_control <= 3) %>%
+  select(AGE, IQ, perceived_control, perceived_reinforce, frustrated, motivated, 
+         win_feeling, lose_feeling)
+cor_table <- correlation(control)
+cor_table_control <- summary(cor_table)
+cor_table_control
+save(cor_table_control, file = "tables/1_demographics_descriptives/corr_table_motivation_perceived_control.Rdata")
+
+# this should actually be a bar graph!! 
+beh_comp_subj <- beh_comp_subj %>%
+  mutate(perceived_control.f = as.factor(ifelse(perceived_control >= 3, "3", 
+                                      ifelse(perceived_control == 2, "2", "1"))))
+anova_percieved <- lm(motivated ~ perceived_control.f, data = subset(beh_comp_subj, !is.na(perceived_control.f)))
+
+effect_df <- data.frame(effect("perceived_control.f", anova_percieved))
+order <- c("1", "2", "3", "")
+levels(effect_df$perceived_control.f) <- order
+summary(effect_df$perceived_control.f)
+
+levels(beh_comp_subj$perceived_control.f) <- order
+summary(beh_comp_subj$perceived_control.f)
+control_plot <- ggplot(data = effect_df,
+                       aes(x = perceived_control.f, y = fit)) + 
+  geom_bar(stat = "identity", fill= dark_blue, alpha = 0.3) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.5, color = dark_blue) +
+  geom_jitter(data = beh_comp_subj, aes(x = perceived_control.f, y = motivated), 
+              width = 0.1, height = 0.0, color = dark_blue, alpha = 0.3) + 
+  theme_classic() + ylab("Self-reported motivation") + xlab ("Perceived Control")
+
+control_plot
+ggsave(control_plot, file = "figures/1_demographics_descriptives/corr_perceived_control_motivation.pdf", width = 2.5, height = 4)
+```
+
+### age isn't correlated with perceived effort, but is correlated with motor skills.
+```{r}
+effort_vars <- beh_comp_subj %>%
+  select(AGE, IQ, motor_skills_easy, motor_skills_hard, hard_effort_perceived, easy_effort_perceived) %>%
+  mutate(motor_skills_ave = (motor_skills_hard + motor_skills_easy)/2, 
+        perceived_effort_ave = (hard_effort_perceived +easy_effort_perceived)/2)
+
+cor_table <- correlation(effort_vars)
+cor_table_motor <- summary(cor_table)
+cor_table_motor
+save(cor_table_motor, file = "tables/1_demographics_descriptives/corr_table_motor_age_perceived_effort.Rdata")
+
+
+motor_plot <- ggplot(data = beh_comp_subj, aes(x = AGE, y = motor_skills_hard)) + 
+  geom_point(color = dark_blue, alpha = 0.3) + geom_smooth( method = "lm", color = dark_blue, fill = dark_blue) + 
+  theme_classic() + ylab("Motor skills for hard task") + xlab ("Age (years)")
+
+motor_plot
+ggsave(motor_plot, file = "figures/1_demographics_descriptives/corr_motor_age_plot.pdf", width = 4, height = 4)
+```
+
+### perceived effort correlated with motor skills 
+```{r}
+
+motor_plot <- ggplot(data = beh_comp_subj, aes( y = motor_skills_hard, hard_effort_perceived)) + 
+  geom_jitter(color = dark_blue, alpha = 0.3, width = 0.1, height  = 0.1) +
+  geom_smooth( method = "lm", color = dark_blue, fill = dark_blue) + 
+  theme_classic() + xlab("Motor skills for hard task") + ylab ("Perceived effort on hard task")
+
+motor_plot
+ggsave(motor_plot, file = "figures/1_demographics_descriptives/corr_motor_perceived_effort_plot.pdf", width = 4, height = 4)
+```
+

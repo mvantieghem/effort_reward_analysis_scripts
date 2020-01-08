@@ -1,0 +1,312 @@
+---
+title: "Manipulation checks for effort task"
+author: "Michelle.VanTieghem"
+date: "6/7/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r data, message = F, warning = F}
+source("../../0_R_analysis_setup_file.R", echo=F)
+
+# wide version, by subject.
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_subj_WSLS.Rdata")
+
+
+# long version, by trial 
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long.Rdata")
+load("../../2_cleaning_QC/cleaned_data/COMPS_ONLY/beh_comp_long_WSLS.Rdata")
+
+```
+
+
+# Effort Manipulation checks
+
+## Effort RT: button-pressing between conditions? (hard vs. easy)
+
+first check RT data, and calculate means by condition for each subject. \
+note: RT from button presses was multiple per trial, so these 'motor skills easy / hard' represent the median RT from the given trial.
+```{r stuff}
+beh_comp_motor_long <- beh_comp_long %>%
+  group_by(SUBJECTID) %>%
+  mutate(effort_RT = ifelse(Effort_Choice == "Easy", (motor_skills_easy*100), 
+                            ifelse(Effort_Choice == "Hard", (motor_skills_hard*100), NA)),
+         log_effort_RT = log(effort_RT))
+
+effort_RT_table <- beh_comp_motor_long %>%
+  group_by(Effort_Choice) %>%
+  summarize(median(effort_RT, na.rm = T),
+            sd(effort_RT, na.rm = T))
+save(effort_RT_table, file = "tables/2_manipulation_checks/effort_RT_table_by_condition.Rdata")
+
+ggplot(data = beh_comp_motor_long, aes(effort_RT)) + facet_grid(version~Effort_Choice) +
+  geom_density() + theme_classic()
+
+fix <- beh_comp_long %>% filter(is.na(version))
+unique(fix$SUBJECTID)
+``` 
+
+RT is not normally distributed
+```{r}
+shapiro.test(beh_comp_motor$effort_RT)
+shapiro.test(beh_comp_motor$log_effort_RT)
+
+plot(beh_comp_motor$effort_RT)
+plot(beh_comp_motor$log_effort_RT) # beh_comp_motor$effort_RT)
+```
+
+### Effort RT was slower for the hard task
+```{r other stuff}
+# sig using Raw RT 
+effort_RT <- lmer(effort_RT ~ condition  + AGE.c + SEX.c + 
+                (1 | SUBJECTID),
+               data = beh_comp_motor)
+summary(effort_RT)
+
+# same with logged RT
+effort_RT_lg <- lmer(log_RT ~ condition  + AGE.c + SEX.c + 
+                (1 | SUBJECTID),
+               data = beh_comp_motor)
+summary(effort_RT_lg)
+```
+
+### plot the effects by condition
+```{r more stuff}
+effect_df <- data.frame(effect("condition", effort_RT_lg))
+
+RT_condition_plot <- ggplot(data = effect_df, aes(x = condition, y = fit)) + 
+  geom_point( color = "black", size = 1.5) + 
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  geom_jitter(data = beh_comp_motor, aes(x = condition, y = log_RT), alpha = 0.3, size = 1, width = 0.15, color= dark_blue) +
+  my_colors + my_colors2 + theme_classic() + ylab("log RT (ms)") + ylim(2.5, 3.75)
+
+RT_condition_plot
+ggsave(RT_condition_plot, file = "figures/2_manipulation_checks/Effort_RT_by_condition.pdf", width = 3, height = 4)
+```
+
+
+### no age x condition interaction
+```{r ttt }
+# same with logged RT
+effort_RT_lg_int <- lmer(log_RT ~ condition* AGE.c + SEX.c + 
+                (1 | SUBJECTID),
+               data = beh_comp_motor)
+summary(effort_RT_lg_int)
+```
+
+
+### plot the effects by age 
+```{r bbbb}
+effect_df <- data.frame(effect("condition:AGE.c", effort_RT_lg))
+
+effort_RT_int_plot <- ggplot(data = effect_df, aes(x = AGE.c, y= fit)) + 
+  geom_line(aes(color = condition)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = condition), alpha = 0.25) +
+  geom_point(data = beh_comp_motor, aes(x = AGE.c, y = log_RT, color= condition), alpha = 0.3, width = 0.04) +
+  my_colors + my_colors2 + theme_classic() + ylab("log RT (ms)") + 
+  geom_line(data = beh_comp_motor, aes(x = AGE.c, y = log_RT, group = SUBJECTID))
+effort_RT_int_plot
+ggsave(effort_RT_int_plot, file = "figures/2_manipulation_checks/Effort_RT_by_conditionxAge.pdf")
+```
+
+## Perceived effort: 
+We expect that children overall will rate the hard task (ring finger) as more difficult than the easy task (thumb) in their post-test ratings. As a control analysis, we will follow-up to exclude subjects who rated equal or less effort for the hard task than easy task.
+
+```{r nnnn}
+# make long version of perceived effort data
+perceived_df <- beh_comp_subj %>% 
+  gather(key = "condition", value = "perceived_effort_rating", 
+         hard_effort_perceived, easy_effort_perceived) %>%
+  mutate(condition = as.factor(ifelse(condition == "hard_effort_perceived", 
+                                      "Hard", "Easy"))) %>%
+      mutate(motor_skills_ave= (motor_skills_easy + motor_skills_hard)/2,
+             motor_skills_ave.c = motor_skills_ave - mean(motor_skills_ave, na.rm =T ),
+             motor_skills_by_condition = ifelse(condition == "Easy", motor_skills_easy, motor_skills_hard))
+
+
+```
+
+### model: main effects of AGE and condition
+```{r seee}
+perceived_effort_mod <- lmer(perceived_effort_rating ~ condition + AGE.c + SEX.c + #IQ + Fam_inc_needs + 
+                             Reinforce_rate.c + # + motor_skills_hard + motor_skills_easy + 
+                               (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod)
+
+```
+
+plot effect of condition
+```{r tyyy}
+# get effect  df tidy
+effort_effect <-  as.data.frame(effect("condition", perceived_effort_mod, confint=TRUE))
+
+plot_effect <- ggplot(effort_effect,aes(x = condition, y = fit)) +
+ geom_bar(stat = "identity", position=position_dodge(),
+                                 alpha = 0.25, fill = dark_blue) + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_jitter(data = perceived_df, aes(x = condition, y = perceived_effort_rating),
+       width = 0.2, height = 0, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+  theme_classic() + ylab("Perceived effort") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Condition") + theme(legend.position = "none")
+plot_effect
+
+pdf("figures/Manipulation_check_perceived_effort_Hard_vs_easy.pdf", width = 2.5, height = 4)
+plot_effect
+dev.off()
+```
+
+
+plot effect of age
+```{r ooooo}
+# get effect  df tidy
+effort_effect <-  as.data.frame(effect("AGE.c", perceived_effort_mod, confint=TRUE))
+
+plot_effect <- ggplot(effort_effect, aes(x = AGE.c, y = fit)) +
+ geom_line(color = dark_blue, size = 1) + geom_ribbon(aes(ymax = upper, ymin = lower), 
+                                                         alpha = 0.2, fill= dark_blue) + 
+ geom_point(data = perceived_df,  aes(x = AGE.c, y = perceived_effort_rating),
+            alpha = 0.25, color = dark_blue) + theme(legend.position = "none") +
+  theme_classic() + ylab("Perceived effort") + 
+  xlab ("AGE (centered)") + theme(legend.position = "none")
+plot_effect
+
+pdf("figures/Manipulation_check_perceived_effort_by_Age.pdf", width = 2.5, height = 4)
+plot_effect
+dev.off()
+```
+
+
+### main effect of motor skills on effort
+```{r ppp}
+
+perceived_effort_mod <- lmer(perceived_effort_rating ~ condition + SEX.c +  #AGE.c + 
+                             Reinforce_rate.c + motor_skills_ave.c + 
+                               (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod)
+
+```
+
+
+### main effect of motor skills on effort, NS with age
+```{r zzz}
+
+perceived_effort_mod <- lmer(perceived_effort_rating ~ condition + SEX.c + AGE.c + 
+                             Reinforce_rate.c + motor_skills_ave.c + 
+                               (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod)
+
+```
+
+### age interact with condition? No
+```{r xxx}
+perceived_effort_mod <- lmer(perceived_effort_rating ~ condition * AGE.c + SEX.c +  
+                             Reinforce_rate.c + 
+                               (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod)
+
+```
+
+
+
+
+
+
+### any kids rate easy task harder than hard task? N = 2 
+rerun main analyses omitting these 2 subjects
+```{r eqq}
+nrow(beh_comp_subj %>% filter(hard_effort_perceived < easy_effort_perceived))
+
+```
+
+### any kids rate easy task == hard task? yes  - 23% of kids! 
+```{r qwe}
+nrow(beh_comp_subj %>% filter(hard_effort_perceived == easy_effort_perceived))/ nrow(beh_comp_subj)
+
+```
+
+## Self-reported affect:
+We expect that children will report greater positive affect in response to rewards relative to setbacks (on likert scale, where 1 = very unhappy and 4 = very happy)
+```{r tre}
+# make long version of perceived effort data
+pos_affect_df <- beh_comp_subj %>% 
+  gather(key = "condition", value = "positive_affect", 
+          win_feeling,lose_feeling) %>%
+  mutate(condition = as.factor(ifelse(condition == "win_feeling", 
+                                      "Rewards", "Setbacks"))) %>%
+  select(SUBJECTID, SEX.c, AGE.c,  positive_affect, condition) %>%
+  filter(!is.na(positive_affect) & !is.na(condition) & !is.na(AGE.c) & !is.na(SEX.c))
+
+```
+
+### main effect of Age and Condition
+```{r ert}
+pos_affect_mod <- lmer(positive_affect ~ condition + AGE.c + SEX.c + 
+                          (1 | SUBJECTID),
+   data = pos_affect_df)
+summary(pos_affect_mod)
+```
+
+### Age x condition interaction: NS
+*use anova because lmer doesn't work! 
+```{r ytr}
+pos_affect_modb <- lmer(positive_affect ~ condition * AGE.c + SEX.c + 
+                          (1 | SUBJECTID),
+   data = pos_affect_df)
+summary(pos_affect_modb)
+```
+
+```{r qreeee}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("condition", pos_affect_mod, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect,aes(x = condition, y = fit)) +
+ geom_bar(stat = "identity", position=position_dodge(),
+                                 alpha = 0.25, fill = dark_blue) + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_jitter(data = pos_affect_df,  aes(x = condition, y = positive_affect),
+              width = 0.2, height = 0, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+   theme(legend.position = "none") +
+  theme_classic() + ylab("Positive Affect") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Condition") + theme(legend.position = "none")
+plot_effect
+
+pdf("figures/Manipulation_check_positive_affect_Rewards_vs_Setbacks.pdf", width = 2.5, height = 4)
+plot_effect
+dev.off()
+```
+
+## Perceived control
+Most children understood that they did not have full control over the task 
+```{r poi}
+df <- beh_comp_subj %>%
+  filter(!is.na(perceived_control)) %>%
+group_by(perceived_control) %>%
+  summarize(counts = n())
+
+
+pc_plot <- ggplot(df, aes(x = factor(perceived_control), y = counts)) + 
+    scale_x_discrete(labels = c("1" = "None", "2" = "Some", "3" = "Alot")) +
+  geom_bar(stat = "identity", fill = dark_blue, alpha = 0.3) + theme_classic() +
+  xlab ("Perceived Control")
+
+pc_plot
+
+pdf("figures/comp_perceived_control_hist.pdf", width = 2.5, height= 4)
+pc_plot
+dev.off()
+```
