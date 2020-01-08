@@ -8,14 +8,54 @@ library(corrplot) # for pretty correlation plots
 library(psycho) # for pretty correlation tables.
 library(broom) # for tidy tables of models
 library(gridExtra)# for combining ggplots into single figures
-  # color scheme 
+library(readxl) # reading in excel files easily 
+library(haven) # read in spss files
+library(Hmisc) # easy pairwise correlations with missing data
+library(corrplot) # for pretty correlation plots
+library(psych) # KMO function and other useful things
+library(REdaS) # for diagnostic data checks before FA
+library(knitr) # Required for knitting
+library(papaja) # Required for APA template
+library(citr) # Required for easy insertion of citations
+library(broman) # Required for myround() function that doesn't truncate digits
+library(psych) # Required to calculate Cronbach's alpha
+library(cocron) # Required to statistically compare Cronbach's alphas
+library(kableExtra) # Required for table styling
+library(ggplot2) # Required for plotslibrary(interactions) # IN REVISION (DUE TO PACKAGE UPDATE): Required for Johnson-Neyman and simple slopes analyses
+library(cowplot) # Required for sim_slopes
+library(boot) # Required for bootstrapping CIs in mediation analysis
+library(lavaan) # Required for mediation analyses
+library(apaTables)
+
+# Seed for random number generation
+set.seed(1234)
+
+
+# color scheme 
 my_colors <-  scale_color_manual(values=c("#0006CC", "#CC0000", "black", "black"))
 my_colors2 <- scale_fill_manual(values=c("#0006CC", "#CC0000","black", "black"))
 dark_blue = "#0006CC"
 dark_Red = "#CC0000"
   
-  
-  ######### lmer Version #######
+
+# Functions
+pval <- function(x) {
+  if (x >= .05) {
+    result <- "n.s."
+  }
+  else if (x < .05 & x >= .01) {
+    result <- "p < .05"
+  }
+  else if (x < .01 & x >= .001) {
+    result <- "p < .01"
+  }
+  else {
+    result <- "p < .001"
+  }
+  return(result)
+}  
+
+  ######### lmer Version for simple slopes #######
   condslope.lmer.slopes <- function(x, z, c, y){
     #  condslope.lmer( "age1","GROUP", 0, Amyg_piecewise_orig)
     # x = name of x variable
@@ -62,7 +102,7 @@ dark_Red = "#CC0000"
   }
   
   
-  #### frequentist version
+  #### frequentist linear model reporting
   regtable <- function(model) {
     tidymod <- cbind(tidy(model), tidy(confint(model)))
     # citidy <- tidy(confint(model))
@@ -87,7 +127,7 @@ dark_Red = "#CC0000"
     print(tidymod2)
   }
   
-  ## lmer version
+  ## lmer model reporting
   lmer_table <- function(model) {
     tidymod <- cbind(tidy(model), tidy(confint(model)))
     colnames(tidymod) <- c("effect", "group", "term", "estimate", "std.error", "t.value", "df", 
@@ -109,7 +149,7 @@ dark_Red = "#CC0000"
   }
   
 
-  #### brms bayesian version
+  #### brms bayesian mrel reporting
   
   blm_table <- function(model, id) {
     library(broom)

@@ -19,15 +19,30 @@
 8_brain_ROI_analysis/pulled_betas/**
 8_brain_ROI_analysis/pulled_betas_N126_old/**
 
-# brms model results 
+# brms model results and other data to exclude
+5_brain_behav_inclusion/data/**
+9_combine_brain_beh_data/cleaned_data/**
+9_combine_brain_beh_data/FSL_cope_files/archived/**
+10_planned_analyses/COMP_ECA/archived/**
+10_planned_analyses/COMP_ECA/brms_models/results/**
+10_planned_analyses/COMP_ECA/manuscript/ECA_effort_manuscript_cache/**
+10_planned_analyses/COMP_ECA/manuscript/template_manuscript_cache/**
+10_planned_analyses/COMP_ECA/model_results/old_PCA/**
+10_planned_analyses/COMP_ECA/2_Planned_Analyses/data/**
+10_planned_analyses/COMP_ECA/2_Planned_Analyses/archived/**
+
 10_planned_analyses/COMP_ECA/2_Planned_Analyses/brms_models/results/**
+
+10_planned_analyses/Diss_Chapter_Mtg_and_Flux2019_abstract/**
 10_planned_analyses/COMP_ONLY/brms_models/results_archived/**
 10_planned_analyses/COMP_ONLY/brms_models/archived/**
+10_planned_analyses/COMP_ONLY/brms_models/preregistration_model_results/**
 10_planned_analyses/COMP_ONLY/preregistration_model_results/**
 10_planned_analyses/COMP_ONLY/Rmarkdown_manuscript/**
+10_planned_analyses/COMP_ONLY/archived/** 
 
 
-# files to big 
+# files to big to push 
 **/*.html
 **/*.nii
 **/*.nii.gz
@@ -36,9 +51,14 @@
 **/*.nohup
 **/*.pdf
 **/*._*
+**/makefile
+
+# all of the extra feat files
 **/*.con
 **/*.grp
 **/*.mat
 **/*.ppm
 **/*.png
-
+**/*.min
+**/*.frf
+**/*.trg
