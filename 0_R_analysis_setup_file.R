@@ -26,6 +26,9 @@ library(cowplot) # Required for sim_slopes
 library(boot) # Required for bootstrapping CIs in mediation analysis
 library(lavaan) # Required for mediation analyses
 library(apaTables)
+library(mediation) # for mediation analyses 
+library(purrr) # for code from Dani Cosme for sensitivity analyses
+library(cowplot)# for code from Dani Cosme for sensitivity analysis 
 
 # Seed for random number generation
 set.seed(1234)
