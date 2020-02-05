@@ -1,0 +1,560 @@
+---
+title: "Aim1, hypothesis 2b"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes
+Dec 1 2019: updated with new MICM variables and using PC1_log instead of sqrt.\
+need to re-run brms models!!  and only use brms for plots. \
+also only using scan sample since behavior differs!! 
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R")
+```
+
+```{r}
+# load all data with PCA added!
+load("data/all_pacct_effort_data_with_PCA.rda")
+```
+
+# Aim 1: Characterize effects of ECA exposure on neurobehavioral phenotype of persistence.
+
+# Hypothesis 2b: WSLS behavior
+At the group-level, ECA-exposed children will show  greater behavioral sensitivity to setbacks (indexed by lose-shift decision-making strategies).
+
+
+## clean data to exclude 'too slow' trials
+```{r}
+
+beh_scan_ECA_long_WSLS <- beh_scan_ECA_long_WSLS %>%
+  filter(Feedback_prior != "Too_slow")
+```
+
+# explore/verify in wide dataset 
+still 4 rows per subject, but not trialwise data.
+```{r}
+beh_scan_ECA_wide_WSLS <- beh_scan_ECA_wide_WSLS %>%
+ # filter(Feedback_prior != "Too_slow") %>%
+  mutate(Feedback_prior = ifelse(Feedback_prior == "Too_slow" | 
+                                   Feedback_prior == "Setback", "Setback", "Reward")) %>%
+  dplyr::select(SUBJECTID, AGE, SEX, GROUP_ECA, 
+                stay_shift, Feedback_prior, Effort_Choice_prior,
+                PC1_log , perceived_reinforce , 
+                perceived_effort_ave , perceived_control , 
+                frustrated , motivated , 
+                win_feeling , lose_feeling , 
+                median_motor_RT_ave , N_trials ) %>%
+  na.omit()
+
+
+summary(as.factor(beh_scan_ECA_wide_WSLS$Feedback_prior))
+```
+
+```{r}
+stuff <- lmer(stay_shift ~ Feedback_prior + Effort_Choice_prior +
+                AGE + SEX + 
+                PC1_log + perceived_reinforce + 
+                #perceived_effort_ave + perceived_control + 
+                #frustrated + motivated + 
+                median_motor_RT_ave + N_trials +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_wide_WSLS)
+summary(stuff)
+```
+
+## full model with all self-report measures 
+sig: perceived reinforcement ***
+covariates sig: effort choice prior,age, trial number, proportion hard, 
+effort choice x trial number, effort choice x feedback 
+group effect isn't significant - maybe because of perceived reinforcement? 
+```{r}
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_full.Rdata")    
+blm_table(WSLS_mod1_full)
+```
+
+## GROUP effects: SIG main effect 
+and perceived reinforcement is also significant!! 
+as well as : trial number, prior choice, 
+```{r}
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_g_pr.Rdata")    
+blm_table(WSLS_mod1_g_pr)
+```
+
+### Group x effort : NS
+this was significant at some point? 
+```{r}
+
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_gxe_pr.Rdata")    
+blm_table(WSLS_mod1_gxe_pr)
+```
+
+### group x effort x feedback: NS 
+```{r}
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_gxexf.Rdata")    
+blm_table(WSLS_mod1_gxexf)
+```
+
+
+### Group x age: NS
+```{r}
+
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_gxa.Rdata")    
+blm_table(WSLS_mod1_gxa)
+```
+
+
+### Group x trial: NS
+```{r}
+
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_gxt.Rdata")    
+blm_table(WSLS_mod1_gxt)
+```
+
+
+
+
+### plot main effects of GROUP
+```{r}
+
+new_df <- data.frame(expand.grid(GROUP_ECA.x = c(rep("COMP",4),rep("ECA", 4)),
+                     Effort_Choice_prior = rep(c("Hard", "Easy"), 4),
+                     Feedback_prior = c("Reward", "Reward", "Setback", "Setback", "Reward", "Reward", "Setback", "Setback"),
+                     AGE.c = 0, Trial_Number.c = 0, Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_mod1_g, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA.x))
+
+summary(WSLS_effect$GROUP_ECA.x)
+summary(beh_scan_ECA_wide_WSLS$GROUP_ECA)
+
+WSLS_hard_setback_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard" & Feedback_prior == "Setback")
+WSLS_easy_setback_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy" & Feedback_prior == "Setback")
+WSLS_hard_reward_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard" & Feedback_prior == "Reward")
+WSLS_easy_reward_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy" & Feedback_prior == "Reward")
+
+WSLS_easy_setback_plot <- ggplot(WSLS_easy_setback_effect, aes(x = GROUP_ECA, y = fit)) +
+  geom_point(aes(fill = GROUP_ECA), stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+   geom_jitter(data = filter(beh_scan_ECA_wide_WSLS, Effort_Choice_prior == "Easy" & Feedback_prior == "Setback"),
+       aes(x = GROUP_ECA, y = stay_shift, color = GROUP_ECA), 
+       alpha = 0.3, width = 0.05, height =0.0) + 
+  theme_classic() + my_colors + my_colors2 +  ggtitle('Behavior after an easy setback') +
+  ylab ("Likelihood to choose easy again") + xlab ("GROUP") + 
+  theme(legend.position = "none") + 
+  geom_hline(aes(yintercept = 0.5), linetype = "dashed")
+
+WSLS_hard_setback_plot <- ggplot(WSLS_hard_setback_effect, aes(x = GROUP_ECA, y = fit)) +
+  geom_point(aes(fill = GROUP_ECA), stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin = lower, ymax = upper), position= position_dodge(.9), width = .2) +
+  geom_jitter(data = filter(beh_scan_ECA_wide_WSLS, Effort_Choice_prior == "Hard" & Feedback_prior == "Setback"),
+       aes(x = GROUP_ECA, y = stay_shift, color = GROUP_ECA), 
+       alpha = 0.3, width = 0.05, height =0.0) +
+   theme_classic() + my_colors + my_colors2 +  ggtitle('Behavior after a hard setback') +
+  ylab ("Likelihood to choose hard again") + xlab ("GROUP") + 
+  theme(legend.position = "none")+ 
+  geom_hline(aes(yintercept = 0.5), linetype = "dashed")
+
+WSLS_easy_reward_plot <- ggplot(WSLS_easy_reward_effect, aes(x = GROUP_ECA, y = fit)) +
+  geom_point(aes(fill = GROUP_ECA), stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+   geom_jitter(data = filter(beh_scan_ECA_wide_WSLS, Effort_Choice_prior == "Easy" & Feedback_prior == "Reward"),
+       aes(x = GROUP_ECA, y = stay_shift, color = GROUP_ECA), 
+       alpha = 0.3, width = 0.05, height =0.0) + 
+  theme_classic() + my_colors + my_colors2 +  ggtitle('Behavior after an easy reward') +
+  ylab ("Likelihood to choose easy again") + xlab ("GROUP") + 
+  theme(legend.position = "none")+ 
+  geom_hline(aes(yintercept = 0.5), linetype = "dashed")
+
+WSLS_hard_reward_plot <- ggplot(WSLS_hard_reward_effect, aes(x = GROUP_ECA, y = fit)) +
+  geom_point(aes(fill = GROUP_ECA), stat = "identity", position = "dodge", alpha = 0.2)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_jitter(data = filter(beh_scan_ECA_wide_WSLS, Effort_Choice_prior == "Hard" & Feedback_prior == "Reward"),
+       aes(x = GROUP_ECA, y = stay_shift, color = GROUP_ECA),
+       alpha = 0.3, width = 0.05, height =0.0) +
+   theme_classic() + my_colors + my_colors2 +  ggtitle('Behavior after a hard reward') +
+  ylab ("Likelihood to choose hard again") + xlab ("GROUP") + 
+  theme(legend.position = "none")+ 
+  geom_hline(aes(yintercept = 0.5), linetype = "dashed")
+
+
+combined2 <- grid.arrange(WSLS_easy_setback_plot, WSLS_hard_setback_plot, 
+                          WSLS_easy_reward_plot, WSLS_hard_reward_plot, nrow = 2)
+
+ggsave(combined2, height = 8, width = 10, file = "figures/Aim1_hypothesis2b/WSLS_by_GROUPxprior_feedback_xprior_effort_brms.pdf")
+
+```
+
+
+
+## cumulative adversity: NS here!!  
+### main effect is NS 
+```{r}
+
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_PC1.Rdata")    
+blm_table(WSLS_mod1_PC1)
+
+```
+
+
+### cumulative adversity x effort x feedback: NS
+but therer is a PC1 x effort effect, does it stick ? 
+```{r}
+
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_PC1xexf.Rdata")    
+blm_table(WSLS_mod1_PC1xexf)
+
+```
+
+
+
+### ECA continuous x effort choice: SIG!!! 
+
+```{r}
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_PC1xe.Rdata")    
+blm_table(WSLS_mod1_PC1xe)
+```
+
+### ECA continuous x age: NS
+```{r}
+
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_PC1xa.Rdata")    
+blm_table(WSLS_mod1_PC1xa)
+
+```
+
+### ECA conditious x trial: NS
+```{r}
+load(file = "brms_models/results/aim1_hypothesis2b/WSLS_mod1_PC1xt.Rdata")    
+blm_table(WSLS_mod1_PC1xt)
+```
+
+
+make a subject-by-choice level thing to plot raw data
+```{r}
+WSLS_by_effort_per_subj <- beh_scan_ECA_long_WSLS %>%
+  group_by(SUBJECTID, Effort_Choice_prior) %>%
+  dplyr::summarize(GROUP = GROUP[1],
+            PC1_log = mean(PC1_log),
+            AGE.c = mean(AGE.c), 
+            SEX.c = mean(SEX.c), 
+            IQ.c = mean(IQ.c), 
+            perceived_control = mean(perceived_control), 
+            proportion_hard.c = mean(proportion_hard.c),
+            Reinforce_rate.c = mean(Reinforce_rate.c), 
+            hard_effort_perceived = mean(hard_effort_perceived), 
+            stay_shift = mean(stay_shift))
+``` 
+
+
+## plot of PC1 x effort effect
+BRMS version: will give you effects for each condition, even from main effect model
+```{r}
+PC1_est <- c(min(beh_scan_ECA_wide$PC1_log), 1,1.5, 2,2.5, max(beh_scan_ECA_wide$PC1_log))
+#length(PC1_est)
+new_df <- data.frame(expand.grid(PC1_log =PC1_est,
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = c("Reward","Setback"),
+                     AGE.c = 0, Trial_Number.c = 0, Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_mod1_PC1xe, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy")
+
+WSLS_hard_plot <- ggplot(WSLS_hard_effect, aes(x = PC1_log, y = fit)) +
+  geom_line(size = 1,aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.3) +
+  #geom_point(data = filter(beh_scan_ECA_wide_WSLS, Effort_Choice_prior == "Hard" & Feedback_prior != "Too_slow"),
+   #   aes(x = PC1_log, y = stay_shift, color = Feedback_prior), alpha = 0.3) +
+   theme_classic() + my_colors + my_colors2 + ylim(0,1) +
+  ylab ("Likelihood to choose hard again") + xlab ("Cumulative ECA Score") +
+   theme(legend.position = "none") + ggtitle("Behavior after a hard trial") +
+   geom_hline(aes(yintercept = 0.5), linetype = "dashed")  
+
+WSLS_easy_plot <- ggplot(WSLS_easy_effect, aes(x = PC1_log, y = fit)) +
+  geom_line(size = 1, aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.3) +
+  #geom_point(data = filter(beh_scan_ECA_wide_WSLS, Effort_Choice_prior == "Easy"& Feedback_prior != "Too_slow"),
+  #     aes(x = PC1_log, y = stay_shift, color = Feedback_prior), alpha = 0.3) +
+   theme_classic() + my_colors + my_colors2 + ylim(0,1) + 
+  ylab ("Likelihood to choose easy again") + xlab ("Cumulative ECA Score") +
+   theme(legend.position = "none") + ggtitle("Behavior after an easy trial") +
+   geom_hline(aes(yintercept = 0.5), linetype = "dashed")  
+
+combined2 <- grid.arrange(WSLS_easy_plot, WSLS_hard_plot, nrow = 1)
+combined2
+ggsave(combined2, height = 4, width = 6, file = "figures/Aim1_hypothesis2b/WSLS_by_PC1xprior_effort_brms.pdf")
+
+```
+
+
+
+## plot of Feedback x effort effect
+```{r}
+# make new data with mean-centered for everything else. 
+new_df <- data.frame(expand.grid(PC1_log = mean(beh_scan_ECA_wide$PC1_log),
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = c("Reward","Setback"),
+                     AGE.c = 0, Trial_Number.c = 0, Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_mod1_PC1, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy")
+
+
+WSLS_hard_plot <- ggplot(WSLS_hard_effect, aes(x = Feedback_prior, y = fit, fill= Feedback_prior)) +
+  geom_point(size = 3, color = 'black')  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+   geom_jitter(data = subset(beh_scan_ECA_wide_WSLS, Feedback_prior != "Too_slow" & Effort_Choice_prior == "Hard"),
+       aes(x = Feedback_prior, y = stay_shift, color = Feedback_prior), 
+       alpha = 0.1, width = 0.05, height =0.0) + #stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   theme_classic() + my_colors + my_colors2 +   theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard again") + xlab ("Feedback on prior trial") + ggtitle("Behavior after a hard trial") + geom_hline(aes(yintercept = 0.5), linetype = "dashed")
+
+WSLS_Easy_plot <- ggplot(WSLS_easy_effect, aes(x = Feedback_prior, y = fit, fill= Feedback_prior)) +
+  geom_point(size = 3, color = 'black')  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_jitter(data = subset(beh_scan_ECA_wide_WSLS, Feedback_prior != "Too_slow" & Effort_Choice_prior == "Easy"),
+       aes(x = Feedback_prior, y = stay_shift, color = Feedback_prior), 
+       alpha = 0.1, width = 0.05, height =0.0) + #stackratio = 1, stackdir = "center", binaxis = "y", binwidth = .01, dotsize = 1) + 
+   theme_classic() + my_colors + my_colors2 +   theme(legend.position = "none") + 
+  ylab ("Likelihood to choose easy again") + xlab ("Feedback on prior trial") + ggtitle("Behavior after an easy trial") + geom_hline(aes(yintercept = 0.5), linetype = "dashed")
+
+
+combined <- grid.arrange(WSLS_Easy_plot, WSLS_hard_plot, nrow = 1)
+combined
+ggsave(combined, height = 4, width = 6, file = "figures/Aim1_hypothesis2b/WSLS_feedbackXeffort.pdf")
+```
+
+## plot of effort x trial effect
+```{r}
+
+# make new data with mean-centered for everything else. 
+new_df <- data.frame(expand.grid(PC1_log = mean(beh_scan_ECA_long$PC1_log),
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = c("Reward","Setback"),
+                     AGE.c = 0, Trial_Number.c = c(-10, -5, 0, 5, 10), 
+                     Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_mod1_PC1, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy")
+
+
+plot_hard_effect <- ggplot(WSLS_hard_effect, aes(x = Trial_Number.c, y = fit)) + 
+   geom_line(size = 1, aes(group = Feedback_prior, color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = Feedback_prior, fill = Feedback_prior), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Likelihood to choose hard again") + my_colors + my_colors2 + 
+  xlab ("Trial Number") + geom_hline(aes(yintercept = 0.5), linetype = "dashed")  +
+  theme(legend.position = "none") +ylim(0,1) + ggtitle ("Behavior after the hard task")
+plot_hard_effect
+
+plot_easy_effect <- ggplot(WSLS_easy_effect, aes(x = Trial_Number.c, y = fit)) + 
+   geom_line(size = 1, aes(group = Feedback_prior, color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = Feedback_prior, fill = Feedback_prior), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Likelihood to choose easy again") + my_colors + my_colors2 + 
+  xlab ("Trial Number") + geom_hline(aes(yintercept = 0.5), linetype = "dashed")  +
+  theme(legend.position = "none") +ylim(0,1) + ggtitle ("Behavior after the easy task")
+plot_easy_effect
+
+
+combined <- grid.arrange(plot_easy_effect, plot_hard_effect, nrow = 1)
+combined
+ggsave(combined, height = 4, width = 6, file = "figures/Aim1_hypothesis2b/WSLS_by_trialN_X_effort_choice.pdf")
+
+```
+
+
+## plot of effort x age effect
+```{r}
+
+# make new data with mean-centered for everything else. 
+new_df <- data.frame(expand.grid(PC1_log = mean(beh_scan_ECA_long_WSLS$PC1_log),
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = c("Reward","Setback"),
+                     AGE.c = c(min(beh_scan_ECA_long_WSLS$AGE.c), -1, 0,1, max(beh_scan_ECA_long_WSLS$AGE.c)), 
+                     Trial_Number.c = 0, 
+                     Reinforce_rate.c = 0, SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_mod1_PC1, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate)
+WSLS_hard_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy")
+
+
+plot_hard_effect <- ggplot(WSLS_hard_effect, aes(x = AGE.c, y = fit)) + 
+   geom_line(size = 1, aes(group = Feedback_prior, color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = Feedback_prior, fill = Feedback_prior), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Likelihood to choose hard again") + my_colors + my_colors2 + 
+  xlab ("Age (mean-centered)") + geom_hline(aes(yintercept = 0.5), linetype = "dashed")  +
+  theme(legend.position = "none") +ylim(0,1) + ggtitle("Behavior after the hard task")
+plot_hard_effect
+
+plot_easy_effect <- ggplot(WSLS_easy_effect, aes(x = AGE.c, y = fit)) + 
+   geom_line(size = 1, aes(group = Feedback_prior, color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin=lower, ymax=upper, 
+                  group = Feedback_prior, fill = Feedback_prior), alpha =0.2, color = NA) +
+   theme_classic() + ylab("Likelihood to choose easy again") + my_colors + my_colors2 + 
+  xlab ("Age (mean-centered)") + geom_hline(aes(yintercept = 0.5), linetype = "dashed")  +
+  theme(legend.position = "none") +ylim(0,1) + ggtitle("Behavior after the easy task")
+plot_easy_effect
+
+
+combined <- grid.arrange(plot_easy_effect, plot_hard_effect, nrow = 1)
+combined
+ggsave(combined, file = "figures/Aim1_hypothesis2b/WSLS_by_prior_effort_X_Age.pdf", width = 6, height = 4)
+
+```
+
+# Reaction Time for WSLS
+## explore self-reported effects
+perceived control and perceived effort are significant!! 
+```{r}
+
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_full.Rdata")
+blm_table(WSLS_RT_mod1_full)
+
+```
+
+##  group effects 
+### main effect and prior effort x prior FB x stay/shift
+stay shift x FB: NS 
+stay shift X prior effort: SIG 
+stay shift x prior effort x prior FB: NS
+```{r}
+
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_g.Rdata")
+blm_table(WSLS_RT_mod1_g)
+
+```
+
+
+###  group x stay shift: SIG when controlling for perceived effort! 
+main effect of FB
+main effect of prior effort 
+mainn effect of age
+main effect of reinforce rate 
+stay shift x FB: NS 
+stay shift X prior effort: SIG 
+```{r}
+
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_gxss.Rdata")
+blm_table(WSLS_RT_mod1_gxss)
+
+```
+
+### Group x stay shift x effort prior: NS
+```{r}
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_gxssxe.Rdata")
+blm_table(WSLS_RT_mod1_gxssxe)
+```
+
+## cumulative ECA effects 
+### PC1 main effect: NS
+```{r}
+
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_PC1.Rdata")
+blm_table(WSLS_RT_mod1_PC1)
+
+```
+
+### PC1 x stay/shift : NS
+```{r}
+
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_PC1xss.Rdata")
+blm_table(WSLS_RT_mod1_PC1xss)
+
+```
+
+
+### PC1 x stay/shift : NS
+```{r}
+
+load("brms_models/results/aim1_hypothesis2b/WSLS_RT_mod1_PC1xssxe.Rdata")
+blm_table(WSLS_RT_mod1_PC1xssxe)
+
+```
+
+## plot of RT - prior effort x shift/stay
+note: only plotting for Feedback prior == reward for simplicity, because there is no feedback effect and brms doesnt let you take the average of dummy coded factors. 
+```{r}
+
+WSLS_RT_df <- beh_scan_ECA_long_WSLS %>%
+    mutate(stay_shift = as.factor(ifelse(stay_shift == 0, "Shift", "Stay"))) %>%
+  group_by(SUBJECTID, stay_shift, Effort_Choice_prior) %>%
+  dplyr::summarize(WSLS_RT = mean(key_resp_choice.rt)) 
+
+
+# make new data with mean-centered for everything else. 
+new_df <- data.frame(expand.grid(PC1_log = mean(beh_scan_ECA_wide$PC1_log),
+                                 stay_shift = c(0,1),
+                     Effort_Choice_prior = c("Hard", "Easy"),
+                     Feedback_prior = "Reward",
+                     AGE.c = 0, Trial_Number.c = 0, Reinforce_rate.c = 0, 
+                     SEX.c = 0, proportion_hard.c = 0))
+
+WSLS_effect<- fitted(WSLS_RT_mod1_PC1, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(stay_shift = as.factor(ifelse(stay_shift == 0, "Shift", "Stay")))
+WSLS_hard_effect <- filter(WSLS_effect, Effort_Choice_prior == "Hard")
+WSLS_easy_effect <- filter(WSLS_effect, Effort_Choice_prior == "Easy")
+
+
+WSLS_hard_plot <- ggplot(WSLS_hard_effect, aes(x =stay_shift, y = fit)) +
+  geom_point(size = 3)  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  geom_jitter(data = filter(WSLS_RT_df, Effort_Choice_prior == "Hard"),
+               aes(x = stay_shift, y = WSLS_RT), 
+              color = dark_blue, alpha = 0.1, width = 0.05, height = 0.05) + 
+   theme_classic() + my_colors + my_colors2 +   theme(legend.position = "none") + 
+  ylab ("Reaction Time (seconds)") + xlab ("") + ggtitle("Behavior after a hard trial")
+
+WSLS_Easy_plot <- ggplot(WSLS_easy_effect, aes(x = stay_shift, y = fit)) +
+  geom_point(size = 3, position = "dodge")  +
+ geom_errorbar(aes(ymin= lower, ymax= upper), position= position_dodge(.9), width = .2) +
+  
+  geom_jitter(data = filter(WSLS_RT_df,  Effort_Choice_prior == "Easy"), 
+                            aes(x = stay_shift, y = WSLS_RT), 
+              color = dark_blue, alpha = 0.1, width = 0.05, height = 0.05) + 
+   theme_classic() + my_colors + my_colors2 +   theme(legend.position = "none") + 
+  ylab ("Reaction Time (seconds)") + xlab ("") + ggtitle("Behavior after an easy trial") 
+
+combined <- grid.arrange(WSLS_Easy_plot, WSLS_hard_plot, nrow = 1)
+combined
+ggsave(combined, height = 4, width = 6, file = "figures/Aim1_hypothesis2b/WSLS_RT_stay_shift_xEffort.pdf")
+```
+

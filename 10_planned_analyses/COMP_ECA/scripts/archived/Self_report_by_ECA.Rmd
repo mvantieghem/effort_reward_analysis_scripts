@@ -1,0 +1,301 @@
+---
+title: "Self-report data by ECA"
+author: "Michelle.VanTieghem"
+date: "Dec 2, 2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+# notes:
+summary of results: significant ECA effect of perceived effort: more ECA = more perceived effort for both hard and easy. \
+no ECA effect on positive affect, perceived control, frustration. 
+
+
+# Load data
+## only behavior
+from data_cleaning_for_analysis 
+```{r data, message = F, warning = F}
+source("../../../0_R_analysis_setup_file.R", echo=F)
+
+load("../1_PCA/data/all_pacct_effort_data_with_PCA.rda")
+```
+
+
+# Effort Manipulation checks & effects of ECA 
+
+## Self-reported affect to rewards & setbacks 
+win feeling = how did you feel when you won coins \
+lose feeling = how did you feel with you didn't win coins  \
+(on likert scale, where 1 = very unhappy and 4 = very happy)
+```{r tre}
+# make long version of perceived effort data
+pos_affect_df <- beh_ECA_wide %>% 
+  gather(key = "condition", value = "positive_affect", 
+          win_feeling,lose_feeling) %>%
+  mutate(condition = as.factor(ifelse(condition == "win_feeling", 
+                                      "Rewards", "Setbacks"))) %>%
+  select(SUBJECTID, GROUP_ECA, PC1_log, SEX.c, AGE.c,  positive_affect, condition) %>%
+  filter(!is.na(positive_affect) & !is.na(condition) & !is.na(AGE.c) & !is.na(SEX.c)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+```
+
+### group effects? NS
+```{r ert}
+pos_affect_mod_g <- lmer(positive_affect ~ condition * GROUP_ECA + AGE.c + SEX.c + 
+                          (1 | SUBJECTID),
+   data = pos_affect_df)
+summary(pos_affect_mod_g)
+
+pos_affect_mod_PC1 <- lmer(positive_affect ~ condition * PC1_log + AGE.c + SEX.c + 
+                          (1 | SUBJECTID),
+   data = pos_affect_df)
+summary(pos_affect_mod_PC1)
+```
+
+
+```{r qreeee}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("condition:GROUP_ECA", pos_affect_mod_g, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect,aes(x = condition, y = fit)) +
+ geom_bar(stat = "identity", position=position_dodge(),
+                                 alpha = 0.25, fill = dark_blue) + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_jitter(data = pos_affect_df,  aes(x = condition, y = positive_affect),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+   theme(legend.position = "none") + facet_grid(~GROUP_ECA) +
+  theme_classic() + ylab("Positive Affect") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Condition") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "figures/manipulation_checks/no_group_diff_pos_affect.pdf", width = 2.5, height = 4)
+
+```
+
+## Age x condition?
+```{r}
+pos_affect_mod_gxa <- lmer(positive_affect ~ condition * AGE.c + SEX.c +  GROUP_ECA +
+                          (1 | SUBJECTID),
+   data = pos_affect_df)
+summary(pos_affect_mod_gxa)
+```
+
+## Perceived control
+
+### main effect of age, but not group. 
+perceived control declines with age - kids know that it's rigged.
+```{r poi}
+control_df <- beh_scan_ECA_wide %>%
+  filter(!is.na(perceived_control)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+perceived_control_mod_g <-  lm(perceived_control ~ GROUP_ECA + AGE.c + SEX.c + 
+                                 Reinforce_rate.c, data = control_df)
+
+summary(perceived_control_mod_g)
+
+perceived_control_mod_PC1 <-  lm(perceived_control ~ PC1_log + AGE.c + SEX.c + 
+                                 Reinforce_rate.c, data = control_df)
+
+summary(perceived_control_mod_PC1)
+```
+
+plot main effect of age
+```{r}
+control_effect <-  as.data.frame(effect("GROUP_ECA:AGE.c", perceived_control_mod_g, confint=TRUE))
+
+plot_effect <- ggplot(control_effect, aes(x = AGE.c, y = fit)) +
+ geom_line() + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.25, fill = dark_blue) +
+  geom_jitter(data = control_df, aes(x = AGE.c, y = perceived_control),
+       width = 0.2, height = 0.1, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+  theme_classic() + ylab("Perceived control") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Age (mean-centered)") + theme(legend.position = "none") + facet_grid(~GROUP_ECA)
+plot_effect
+
+ggsave(plot_effect, file = "figures/manipulation_checks/age_effect_perceived_control.pdf", width = 2.5, height = 4)
+
+```
+
+## frustration
+```{r}
+df <- beh_ECA_subj %>%
+  filter(!is.na(frustrated)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+```
+
+### GROUP effects? NS
+```{r}
+frustrated_mod_g <- lm(frustrated ~ GROUP_ECA + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(frustrated_mod_g)
+
+
+frustrated_mod_g <- lm(frustrated ~ PC1_log + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(frustrated_mod_g)
+```
+
+## motivation
+```{r}
+df <- beh_ECA_subj %>%
+  filter(!is.na(motivated)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+```
+
+### GROUP effects? NS
+motivation is affected by their positive affect after winning. 
+when you account for that positive affect, then group influences motivation. 
+but i dont know if this is legit. 
+```{r}
+motivated_mod_g <- lm(motivated ~ GROUP_ECA + win_feeling + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(motivated_mod_g)
+
+
+motivated_mod_PC1 <- lm(motivated ~ PC1_log + win_feeling + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(motivated_mod_PC1)
+```
+
+
+## Sleepy
+```{r}
+df <- beh_ECA_subj %>%
+  filter(!is.na(sleepy)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+```
+
+### ECA effects? NS
+motivation is affected by their positive affect after winning. 
+when you account for that positive affect, then group influences motivation. 
+but i dont know if this is legit. 
+```{r}
+sleepy_mod_g <- lm(sleepy~ GROUP_ECA + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(sleepy_mod_g)
+
+
+sleepy_mod_PC1 <- lm(sleepy ~ PC1_log + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(sleepy_mod_PC1)
+```
+
+
+## Fun
+```{r}
+df <- beh_ECA_subj %>%
+  filter(!is.na(fun)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+```
+
+### GROUP effects? NS but sig age effects
+motivation is affected by their positive affect after winning. 
+when you account for that positive affect, then group influences motivation. 
+but i dont know if this is legit. 
+```{r}
+fun_mod_g <- lm(fun ~ GROUP_ECA + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(fun_mod_g)
+
+
+fun_mod_PC1 <- lm(fun ~ PC1_log + AGE.c + SEX.c + Reinforce_rate.c, 
+                      data = df)
+summary(fun_mod_PC1)
+```
+
+##  Motor skills: button-pressing on pre-test (hard vs. easy)
+median RT during  finger tapping pre-test
+```{r stuff}
+beh_ECA_motor_long <- beh_ECA_long %>%
+  group_by(SUBJECTID) %>%
+  mutate(motor_skills_RT = ifelse(Effort_Choice == "Easy", (motor_skills_easy*100), 
+                            ifelse(Effort_Choice == "Hard", (motor_skills_hard*100), NA)),
+         log_motor_skills_RT = log(motor_skills_RT))
+
+motor_skills_RT_table <- beh_ECA_motor_long %>%
+  group_by(Effort_Choice) %>%
+  summarize(median(e_RT, na.rm = T),
+            sd(motor_skills_RT, na.rm = T))
+save(motor_skills_RT_table, file = "tables/2_manipulation_checks/motor_skills_RT_table_by_condition.Rdata")
+
+ggplot(data = beh_comp_motor_long, aes(motor_skills_RT)) + facet_grid(version~Effort_Choice) +
+  geom_density() + theme_classic()
+
+fix <- beh_comp_long %>% filter(is.na(version))
+unique(fix$SUBJECTID)
+``` 
+
+RT is not normally distributed
+```{r}
+shapiro.test(beh_comp_motor$motor_skills_RT)
+shapiro.test(beh_comp_motor$log_motor_skills_RT)
+
+plot(beh_comp_motor$motor_skills_RT)
+plot(beh_comp_motor$log_motor_skills_RT) # beh_comp_motor$motor_skills_RT)
+```
+
+### Effort RT was slower for the hard task
+```{r other stuff}
+# sig using Raw RT 
+motor_skills_RT <- lmer(motor_skills_RT ~ condition  + AGE.c + SEX.c + 
+                (1 | SUBJECTID),
+               data = beh_comp_motor)
+summary(motor_skills_RT)
+
+# same with logged RT
+motor_skills_RT_lg <- lmer(log_RT ~ condition  + AGE.c + SEX.c + 
+                (1 | SUBJECTID),
+               data = beh_comp_motor)
+summary(motor_skills_RT_lg)
+```
+
+### plot the effects by condition
+```{r more stuff}
+effect_df <- data.frame(effect("condition", motor_skills_RT_lg))
+
+RT_condition_plot <- ggplot(data = effect_df, aes(x = condition, y = fit)) + 
+  geom_point( color = "black", size = 1.5) + 
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  geom_jitter(data = beh_comp_motor, aes(x = condition, y = log_RT), alpha = 0.3, size = 1, width = 0.15, color= dark_blue) +
+  my_colors + my_colors2 + theme_classic() + ylab("log RT (ms)") + ylim(2.5, 3.75)
+
+RT_condition_plot
+ggsave(RT_condition_plot, file = "figures/manipulation_checks/2_manipulation_checks/motor_skills_RT_by_condition.pdf", width = 3, height = 4)
+```
+
+
+### no age x condition interaction
+```{r ttt }
+# same with logged RT
+motor_skills_RT_lg_int <- lmer(log_RT ~ condition* AGE.c + SEX.c + 
+                (1 | SUBJECTID),
+               data = beh_comp_motor)
+summary(motor_skills_RT_lg_int)
+```
+
+
+### plot the effects by age 
+```{r bbbb}
+effect_df <- data.frame(effect("condition:AGE.c", motor_skills_RT_lg))
+
+motor_skills_RT_int_plot <- ggplot(data = effect_df, aes(x = AGE.c, y= fit)) + 
+  geom_line(aes(color = condition)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = condition), alpha = 0.25) +
+  geom_point(data = beh_comp_motor, aes(x = AGE.c, y = log_RT, color= condition), alpha = 0.3, width = 0.04) +
+  my_colors + my_colors2 + theme_classic() + ylab("log RT (ms)") + 
+  geom_line(data = beh_comp_motor, aes(x = AGE.c, y = log_RT, group = SUBJECTID))
+motor_skills_RT_int_plot
+ggsave(motor_skills_RT_int_plot, file = "figures/manipulation_checks/2_manipulation_checks/motor_skills_RT_by_conditionxAge.pdf")
+```

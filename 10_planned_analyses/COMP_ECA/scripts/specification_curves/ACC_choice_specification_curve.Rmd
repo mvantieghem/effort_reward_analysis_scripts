@@ -1,0 +1,1287 @@
+---
+title: "specification curves for ACC during choices"
+author: "Michelle.VanTieghem"
+date: "1/5/2020"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes: 
+code for specification curves from Dani Cosme
+https://github.com/dcosme/specification-curves/blob/master/SCA_tutorial.Rmd
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../../0_R_analysis_setup_file.R")
+```
+
+# load data
+```{r}
+# load all data with PCA added!
+load("../data/all_pacct_effort_data_with_PCA.rda")
+```
+
+## clean data
+## set up & clean data
+```{r} 
+choice_level_order <- c('ACC', 'mPFC',  "VS")
+#organize data for choice phase.
+choice_df <- beh_scan_ECA_wide %>%
+  # combine left and right accumbens betas into bilateral! 
+  select(-starts_with("feedback"), -starts_with("setback"), -starts_with("reward")) %>%
+  gather(key = "ROI", value = "beta", choice_ACC, choice_choice_mPFC,  choice_VS) %>%
+  filter(!is.na(beta) & !is.na(PC1)) %>%
+  mutate(ROI = ifelse(ROI == "choice_ACC", "ACC",
+                      ifelse(ROI == "choice_choice_mPFC", "mPFC",  "VS")),
+            ROI = factor(ROI, levels = choice_level_order),
+         AGE.c = AGE.x - mean(AGE.x, na.rm = T),
+         SEX.c = SEX.x - mean(SEX.x, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+         GROUP_ECA.c = ifelse(GROUP_ECA == "COMP", -1, 1), 
+         PC1_log.c = PC1_log - mean(PC1_log, na.rm = T))
+
+# check right number of subjects! 
+length(unique(choice_df$SUBJECTID))
+
+```
+
+## remove outliers
+calculated already.
+```{r}
+load(file = "../tables/choice_betas_outlier_subjects.Rdata")
+choice_outliers <- choice_outlier_subjects %>% 
+  filter(ROI == "ACC")
+
+
+choice_df2 <- choice_df %>%
+  mutate(beta = ifelse(SUBJECTID %in% choice_outliers$SUBJECTID , NA, beta), 
+         diff_pos_affect = win_feeling-lose_feeling) %>%
+  select(ROI, beta, PC1_log.c, AGE.c, SEX.c, IQ.c, Fam_inc_needs.c, 
+         total_TRs_censored.c, Reinforce_rate.c, 
+         frustrated, perceived_control, motivated, perceived_effort_ave, 
+         perceived_reinforce, diff_pos_affect) %>%
+  filter(ROI == "ACC") %>%
+  na.omit() 
+
+nrow(choice_df2)
+```
+
+# using code from Dani Cosme for sensitivity analysis 
+
+```{r}
+library(purrr)
+library(cowplot)
+```
+
+## check full model run normally 
+```{r}
+full_test <- lm(beta ~  PC1_log.c + AGE.c  + SEX.c + IQ.c + Fam_inc_needs.c + 
+                       total_TRs_censored.c +  Reinforce_rate.c  + 
+                      frustrated + perceived_control +  motivated +  
+                      perceived_effort_ave + perceived_reinforce + diff_pos_affect,
+                 data = choice_df2)
+summary(full_test)
+```
+
+## run all nested models using `dredge` from `MuMIn`
+* max number of predictors = 30
+```{r dredge}
+# set na.action for dredge
+options(na.action = "na.fail")
+
+# run full model
+full.model = full_test
+# run all possible nested models
+all.models = MuMIn::dredge(full.model, rank = "AIC", extra = "BIC")
+```
+
+
+##  PC1 
+
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "PC1_log.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_PC1.png", height = 8, width  = 20)
+```
+
+
+##  motivation  
+
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "motivated") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_motivation.png", height = 8, width  = 20)
+
+```
+
+
+## perceived effort
+
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "perceived_effort_ave") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_perceived_effort.png", height = 8, width  = 20)
+
+```
+
+
+## perceived reinforce 
+
+extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "perceived_reinforce") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_perceived_reinforce.png", height = 8, width  = 20)
+
+```
+
+
+## frustration
+extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "frustrated") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_frustration.png", height = 8, width  = 20)
+
+```
+
+
+## perceived control 
+
+extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "perceived_control") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_perceived_control.png", height = 8, width  = 20)
+
+```
+
+
+## diff positive affect
+
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "diff_pos_affect") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_diff_pos_affect.png", height = 8, width  = 20)
+
+```
+
+
+## AGE 
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "AGE.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_AGE.png", height = 8, width  = 20)
+
+```
+
+
+##  motion confound 
+
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "total_TRs_censored.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_motion.png", height = 8, width  = 20)
+
+```
+
+
+## Family income to needs
+
+extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "Fam_inc_needs.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_Fam_inc_needs.png", height = 8, width  = 20)
+
+```
+
+##  IQ 
+
+extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "IQ.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choices__by_IQ.png", height = 8, width  = 20)
+
+```
+
+
+##  Actual reinforcement rate 
+
+extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "Reinforce_rate.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+  plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "coefficient for actual reinforcement rate \n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../figures/specification_curves/ACC_choice_by_actual_reinforcement.png", height = 8, width  = 20)
+
+```

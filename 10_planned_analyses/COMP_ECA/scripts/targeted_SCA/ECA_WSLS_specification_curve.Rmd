@@ -1,0 +1,789 @@
+---
+title: "WSLS specification curve analysis"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# Readme
+forgot to use binomial family, now models fail to converge 
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../../0_R_analysis_setup_file.R")
+```
+
+```{r}
+# load all data with PCA added!
+load("../../data/all_pacct_effort_data_with_PCA.rda")
+```
+
+
+## clean data to exclude 'too slow' trials and exclude subjs with missing vars
+```{r}
+
+beh_scan_ECA_long_WSLS <- beh_scan_ECA_long_WSLS %>%
+  filter(Feedback_prior != "Too_slow") %>% 
+    dplyr::select(SUBJECTID, AGE.c, SEX.c, GROUP_ECA.x, 
+                total_TRs_censored,
+                  PC1_log, IQ.c, proportion_hard.c, 
+                stay_shift, Feedback_prior, Effort_Choice_prior,
+                perceived_reinforce , Reinforce_rate.c, 
+                perceived_effort_ave , perceived_control , 
+                frustrated, motivated , 
+                win_feeling , lose_feeling , 
+                median_motor_RT_ave , N_trials,  Trial_Number,
+                choice_ACC,# hard_easy_choice_ACC,
+                 choice_choice_mPFC, #hard_easy_choice_choice_mPFC,
+                 choice_VS, #hard_easy_choice_VS,
+                reward_Amyg, setback_Amyg, reward_setback_Amyg, 
+                reward_VS, setback_VS, reward_setback_VS, 
+                reward_vmPFC, setback_vmPFC, reward_setback_vmPFC, 
+                reward_FB_mPFC, setback_FB_mPFC, reward_setback_FB_mPFC) %>%
+  na.omit()
+
+# very few subjects after excluding for all this stuff!!! 
+length(unique(beh_scan_ECA_long_WSLS$SUBJECTID))
+# redo with smaller sample for hard-easy choice contrasts.
+
+```
+
+## make wide dataset 
+still 4 rows per subject,
+```{r}
+beh_scan_ECA_wide_WSLS <- beh_scan_ECA_wide_WSLS %>%
+  filter(Feedback_prior != "Too_slow") %>%
+ # mutate(Feedback_prior = ifelse(Feedback_prior == "Too_slow" | 
+  #                                 Feedback_prior == "Setback", "Setback", "Reward")) %>%
+  dplyr::select(SUBJECTID, AGE, SEX, IQ, GROUP_ECA, 
+                total_TRs_censored,
+                stay_shift, Feedback_prior, Effort_Choice_prior,
+                prop_hard_choices,
+                PC1_log , perceived_reinforce , Reinforce_rate.c,
+                perceived_effort_ave , perceived_control , 
+                frustrated , motivated , 
+                win_feeling , lose_feeling , 
+                median_motor_RT_ave , N_trials,
+                choice_ACC,# hard_easy_choice_ACC,
+                 choice_choice_mPFC, #hard_easy_choice_choice_mPFC,
+                 choice_VS, #hard_easy_choice_VS,
+                reward_Amyg, setback_Amyg, reward_setback_Amyg, 
+                reward_VS, setback_VS, reward_setback_VS, 
+                reward_vmPFC, setback_vmPFC, reward_setback_vmPFC, 
+                reward_FB_mPFC, setback_FB_mPFC, reward_setback_FB_mPFC) %>%
+  na.omit()
+
+```
+
+# set full models
+
+## full model with all sig interactions
+```{r}
+full_mod <- glmer(stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                   Trial_Number*Effort_Choice_prior + #*Feedback_prior + 
+                AGE.c *Effort_Choice_prior + #*Feedback_prior + 
+                PC1_log*Effort_Choice_prior + #*Feedback_prior +
+                SEX.c +  proportion_hard.c + 
+                median_motor_RT_ave + Trial_Number + IQ.c + 
+                (1 | SUBJECTID), family = binomial,  
+              data = beh_scan_ECA_long_WSLS)
+summary(full_mod)
+```
+
+## post-hoc test for feedback effect in hard tasks only: NS
+```{r}
+full_mod2 <- glmer(stay_shift ~ Feedback_prior +
+                   Trial_Number + #*Feedback_prior + 
+                AGE.c + #*Feedback_prior + 
+                PC1_log + #*Feedback_prior +
+                SEX.c +  proportion_hard.c + 
+                median_motor_RT_ave + Trial_Number + IQ.c + 
+                (1 | SUBJECTID), family = binomial,  family = binomial, 
+              data =filter(beh_scan_ECA_long_WSLS, Effort_Choice_prior == "Hard"))
+summary(full_mod2)
+
+```
+
+
+## full model with added all possible self-report covariates
+```{r}
+full_mod_cov <- glmer(stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + #*Feedback_prior + 
+                PC1_log*Effort_Choice_prior + #*Feedback_prior +
+                SEX.c +  proportion_hard.c + 
+                perceived_reinforce + Reinforce_rate.c +
+                  perceived_effort_ave + perceived_control + 
+                frustrated + motivated + 
+                median_motor_RT_ave +Trial_Number+ IQ.c + 
+                (1 + Trial_Number | SUBJECTID), family = binomial,
+              data = beh_scan_ECA_long_WSLS)
+summary(full_mod_cov)
+```
+
+
+
+## test model with only significant stuff or necessary covariates 
+then run all combos of that model. 
+```{r}
+test_mod_cov <- glmer(stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c + #*Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce*Feedback_prior +
+                  perceived_reinforce*PC1_log +
+                 proportion_hard.c + Trial_Number + 
+                #  Reinforce_rate.c + SEX.c +
+                #median_motor_RT_ave + 
+                (1 + Trial_Number | SUBJECTID), family = binomial,
+              data = beh_scan_ECA_long_WSLS)
+summary(test_mod_cov)
+```
+
+
+
+# plot effects
+
+## make a subject-by-choice level thing to plot raw data
+```{r}
+WSLS_by_effort_per_subj <- beh_scan_ECA_long_WSLS %>%
+  group_by(SUBJECTID, Effort_Choice_prior) %>%
+  dplyr::summarize(
+            PC1_log = mean(PC1_log),
+            setback_vmPFC = mean(setback_vmPFC),
+            median_motor_RT_ave = mean(median_motor_RT_ave), 
+            N_trials = sum(N_trials),
+            perceived_reinforce = mean(perceived_reinforce),
+            AGE.c = mean(AGE.c), 
+            SEX.c = mean(SEX.c), 
+            IQ.c = mean(IQ.c), 
+            proportion_hard.c = mean(proportion_hard.c),
+            Reinforce_rate.c = mean(Reinforce_rate.c),  
+            stay_shift = mean(stay_shift))
+``` 
+
+
+plot effect of PC1 X Effort Choice prior 
+```{r}
+effect_df <- data.frame(effect("Effort_Choice_prior:PC1_log", test_mod_cov))
+
+
+plot <- ggplot(data = effect_df, aes(x = PC1_log, y = fit)) + 
+  geom_line(color = dark_blue) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_point(data = WSLS_by_effort_per_subj, 
+             color = dark_blue, alpha = 0.3, aes(x = PC1_log, y = stay_shift)) + 
+  ylab("Likelihood to choose easy again") + facet_grid(~Effort_Choice_prior) + 
+  theme_classic()
+
+hard_effect_df <- effect_df %>%
+  filter(Effort_Choice_prior == "Hard")
+
+easy_effect_df <- effect_df %>%
+  filter(Effort_Choice_prior == "Easy")
+
+hard_plot <- ggplot(data = hard_effect_df, aes(x = PC1_log, y = fit)) + 
+  geom_line(color = dark_blue) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_point(data = filter(WSLS_by_effort_per_subj, Effort_Choice_prior == "Hard"), 
+             color = dark_blue, alpha = 0.3, aes(x = PC1_log, y = stay_shift)) + 
+  ylab("Likelihood to choose hard again") + ylim(0, 1) + xlab("Cumulative ECA Score") + 
+  geom_hline(yintercept = 0, linetype = "dashed")
+
+easy_plot <- ggplot(data = easy_effect_df, aes(x = PC1_log, y = fit)) + 
+  geom_line(color = dark_blue) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.2) + 
+  geom_point(data = filter(WSLS_by_effort_per_subj, Effort_Choice_prior == "Easy"), 
+             color = dark_blue, alpha = 0.3, aes(x = PC1_log, y = stay_shift)) + 
+  ylab("Likelihood to choose easy again")  + xlab("Cumulative ECA Score") + 
+  geom_hline(yintercept = 0.5, linetype = "dashed")
+
+stuff <- grid.arrange(easy_plot, hard_plot, nrow = 1)
+ggsave(stuff, file = "../../figures/WSLS_behavior_PC1xEffort.png")
+
+```
+
+
+plot effect of Effort Choice X trial number
+```{r}
+effect_df <- data.frame(effect("Effort_Choice_prior:Trial_Number", test_mod_cov))
+
+
+plot <- ggplot(data = effect_df, aes(x = Trial_Number, y = fit)) + 
+  geom_line(aes(color = Effort_Choice_prior)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Effort_Choice_prior), alpha = 0.2) + 
+ # geom_point(data = WSLS_by_effort_per_subj, 
+  #           color = dark_blue, alpha = 0.3, aes(x = perceived_reinforce, y = stay_shift)) + 
+  ylab("Likelihood to make the same choice again") + xlab("Trial Number") +
+  theme_classic() + ylim(0, 1) + my_colors + my_colors2 + 
+  geom_hline(yintercept = 0.5, linetype = "dashed")  + xlim(0, 22)
+plot
+ggsave(plot, file = "../../figures/WSLS_behavior_EffortChoiceXTrialNumber.png")
+
+```
+
+plot effect of perceived_reinforcement X Feedback prior 
+```{r}
+effect_df <- data.frame(effect("Feedback_prior:perceived_reinforce", test_mod_cov))
+
+
+plot <- ggplot(data = effect_df, aes(x = perceived_reinforce, y = fit)) + 
+  geom_line(aes(color = Feedback_prior)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.2) + 
+ # geom_point(data = WSLS_by_effort_per_subj, 
+  #           color = dark_blue, alpha = 0.3, aes(x = perceived_reinforce, y = stay_shift)) + 
+  ylab("Likelihood to make the same choice again") + xlab("Perceived setback rate") +
+  theme_classic() + ylim(0, 1) + my_colors + my_colors2 + 
+  geom_hline(yintercept = 0.5, linetype = "dashed") 
+plot
+ggsave(plot, file = "../../figures/WSLS_behavior_FeedbackXperceived_reinforce.png")
+
+```
+
+
+
+plot effect of perceived_reinforcement X PC1 
+```{r}
+effect_df <- data.frame(effect("PC1_log:perceived_reinforce", test_mod_cov)) %>%
+  filter(perceived_reinforce == 1 | perceived_reinforce == 2 | perceived_reinforce == 3) %>%
+  mutate(perceived_reinforce = as.factor(ifelse(perceived_reinforce == 1, "Setbacks less than half the time", 
+                                         ifelse(perceived_reinforce == 2, "Setbacks half the time", 
+                                         ifelse(perceived_reinforce == 3, "Setbacks more than half the time", NA)))))
+
+
+plot <- ggplot(data = effect_df, aes(x = PC1_log, y = fit)) + 
+  geom_line(aes(color = perceived_reinforce)) + #facet_grid(~ perceived_reinforce) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = perceived_reinforce), alpha = 0.2) + 
+ # geom_point(data = WSLS_by_effort_per_subj, 
+  #           color = dark_blue, alpha = 0.3, aes(x = perceived_reinforce, y = stay_shift)) + 
+  ylab("Likelihood to make the same choice again") + xlab("Cumulative ECA score") +
+  theme_classic() + ylim(0, 1) + my_colors + my_colors2 + 
+  geom_hline(yintercept = 0.5, linetype = "dashed") 
+plot
+ggsave(plot, file = "../../figures/WSLS_behavior_FeedbackXperceived_reinforce.png")
+
+```
+
+
+
+## make list of models to run 
+want to keep all sig task interactions, and just play around with covariates. 
+so not running all possible models. 
+```{r}
+models = list(
+        # model 1, test model 
+       stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                SEX.c +  proportion_hard.c + 
+                + Reinforce_rate.c + 
+                median_motor_RT_ave + Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial,  family = binomial, 
+        # model 2
+        stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c + 
+                proportion_hard.c + Reinforce_rate.c + 
+                median_motor_RT_ave + Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial,  family = binomial, 
+        # model 3
+        stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                         perceived_reinforce *Feedback_prior +
+               # SEX.c +  proportion_hard.c + 
+                Reinforce_rate.c + 
+                median_motor_RT_ave + Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+        # model 4 
+        stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                 Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                 perceived_reinforce *Feedback_prior +
+               # SEX.c +  proportion_hard.c + 
+                 Reinforce_rate.c + 
+               # median_motor_RT_ave +
+                Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+        # model 5 
+      stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                 perceived_reinforce *Feedback_prior +
+               # SEX.c +  proportion_hard.c + 
+               Reinforce_rate.c + 
+              #  median_motor_RT_ave + Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+        # model 6 
+        stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior +
+                perceived_reinforce *Feedback_prior +
+                SEX.c +  proportion_hard.c + 
+                 Reinforce_rate.c + 
+               # median_motor_RT_ave + Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+        # model 7 
+         stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+               perceived_reinforce *Feedback_prior +
+                SEX.c +  proportion_hard.c + 
+                Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+      # model 8
+      stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                 Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c +  
+                proportion_hard.c +  Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                 Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+    # model 9
+      stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c +  
+                proportion_hard.c +  #Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                 Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+
+    # model 10
+      stay_shift ~ #Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c +  
+                proportion_hard.c +  #Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                 Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+    
+    # model 10
+      stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                   #    Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c +  
+                proportion_hard.c + #Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                 Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+    
+    # model 10
+      stay_shift ~ #Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                #AGE.c *Effort_Choice_prior + 
+                PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c +  
+                proportion_hard.c +  #Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                 Trial_Number + 
+                (1 + Trial_Number | SUBJECTID), family = binomial, 
+    
+    # model 10
+      stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                       Trial_Number*Effort_Choice_prior + 
+                AGE.c *Effort_Choice_prior + 
+                #PC1_log*Effort_Choice_prior + 
+                perceived_reinforce *Feedback_prior +
+                #SEX.c +  
+                proportion_hard.c +  #Reinforce_rate.c + 
+                #median_motor_RT_ave +
+                 Trial_Number + 
+                (1 + Trial_Number | SUBJECTID))
+head(models)
+```
+
+## run those models and extract parameter estimates and stats
+
+```{r}
+# run models to get summary coefficients 
+(model_params = map(models, ~glmer(.x,  data =beh_scan_ECA_long_WSLS)) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+   # note: need broom.mixed because using glmer models not lm models!
+  mutate(tidied = purrr::map(model, broom.mixed::tidy),
+         model_num = row_number()) %>%
+  dplyr::select(model_num, tidied) %>%
+  unnest() %>%
+  dplyr::select(model_num, term, estimate))
+ 
+ model_params2 <- model_params %>%
+  spread(term, estimate) %>%
+  dplyr::select(-starts_with("sd"))
+
+# get model fits for AIC/ BIC 
+(model_fits = purrr::map(models, ~glmer(.x,  data =beh_scan_ECA_long_WSLS)) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(model_num = row_number(),
+         AIC = map_dbl(model, AIC),
+         BIC = map_dbl(model, BIC)) %>%
+  dplyr::select(-model))
+
+# join dataframes and select model fits and parameter estimates
+all_model_stuff <- model_params %>%
+  dplyr::select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  left_join(., model_fits) %>%
+  arrange(AIC)
+```
+
+## perceived reinforce SCA curve
+```{r}
+
+# extract p-values for the term of interest! 
+model_ps <- map(models, ~glmer(.x,  data =beh_scan_ECA_long_WSLS)) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+   # note: need broom.mixed because using glmer models not lm models!
+  mutate(tidied = purrr::map(model, broom.mixed::tidy),
+         model_num = row_number()) %>%
+  dplyr::select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "perceived_reinforce") %>%
+  ungroup() %>%
+  dplyr::select(model_num, estimate, std.error, p.value)
+
+plot.data = left_join(model_ps, model_params2, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, 
+         -model_num, -std.error, -p.value, -significant.p) %>%
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+
+summary(as.factor(plot.data$significant.p))
+
+# get variable names from model
+variable.names = plot.data %>%
+  dplyr::select(-estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>%
+  names()
+
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("red", "black")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  dplyr::select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("red", "black")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+eeggsave(wt, file = "../../figures/targeted_SCA/WSLS_behavior_by_perceived_reinforce.png",  height = 6, width  = 8)
+```
+
+plot effect
+more likely to switch around if you think you're receiveing more rewards.
+```{r}
+
+effect_df <- data.frame(effect("Feedback_prior:perceived_reinforce", test_mod_cov))
+
+effect_plot <- ggplot(data = effect_df, aes(x = perceived_reinforce, y = fit)) +
+  geom_line(aes(color = Feedback_prior)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Feedback_prior), alpha = 0.2) + 
+  geom_hline(yintercept = 0.5, linetype = 2) +
+  my_colors + my_colors2 + theme_classic() + ylim(0, 1) + 
+  ylab("Likelihood to Stay (make the same choice)") +  xlab("Perceived Reward Rate")
+effect_plot
+ggsave(effect_plot, file = "../../figures/SCA_targeted/WSLS_by_perceived_reinforceXFeedback.png")
+  
+```
+
+
+## PC1 log X Effort Choice prior
+```{r}
+
+# extract p-values for the term of interest! 
+model_ps <- map(models, ~glmer(.x,  data =beh_scan_ECA_long_WSLS)) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+   # note: need broom.mixed because using glmer models not lm models!
+  mutate(tidied = purrr::map(model, broom.mixed::tidy),
+         model_num = row_number()) %>%
+  dplyr::select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "Effort_Choice_priorHard:PC1_log") %>%
+  ungroup() %>%
+  dplyr::select(model_num, estimate, std.error, p.value)
+
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>%
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+
+summary(as.factor(plot.data$significant.p))
+
+# get variable names from model
+variable.names = plot.data %>%
+  dplyr::select(-estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>%
+  names()
+
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("red", "black")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  dplyr::select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("red", "black")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../../figures/targeted_SCA/WSLS_behavior_by_PC1.png",  height = 6, width  = 8)
+```
+
+## Trial N x Effort Choice prior
+
+```{r}
+
+# extract p-values for the term of interest! 
+model_ps <- map(models, ~glmer(.x,  data =beh_scan_ECA_long_WSLS)) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+   # note: need broom.mixed because using glmer models not lm models!
+  mutate(tidied = purrr::map(model, broom.mixed::tidy),
+         model_num = row_number()) %>%
+  dplyr::select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "Effort_Choice_priorHard:Trial_Number") %>%
+  ungroup() %>%
+  dplyr::select(model_num, estimate, std.error, p.value)
+
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>%
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  
+
+summary(as.factor(plot.data$significant.p))
+
+# get variable names from model
+variable.names = plot.data %>%
+  dplyr::select(-estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>%
+  names()
+
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate, color = significant.p)) +
+    geom_point(shape = "|", size = 4) +
+    #geom_hline(yintercept = null.df$AIC, linetype = "dashed", color = "lightblue") +
+    scale_color_manual(values = c("red", "black")) +
+    labs(x = "", y = "regression coefficient\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  dplyr::select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("red", "black")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+ggsave(wt, file = "../../figures/targeted_SCA/WSLS_behavior_by_TrialNxEffort_Choice_prior.png",  height = 6, width  = 8)
+```
+
+
+
+# Adding brain measures for reward/setback
+specifically using brain measures that related to self-report behavior: \
+ECA and motivation on Amyg to setbacks \
+perceived rewards on Amyg to reward \
+frustration vmPFC reward \
+## exclude outliers 
+```{r}
+load(file = "../../tables/Feedback_betas_outlier_subjects.Rdata")
+outliers <- FB_outlier_subjects  %>%
+  filter(ROI == "vmPFC" | ROI == "Amyg") %>%
+  filter(contrast == "reward" | contrast == "setback")
+
+
+beh_scan_ECA_long_WSLS <- beh_scan_ECA_long_WSLS %>%
+  mutate(setback_Amyg = ifelse(SUBJECTID %in% outliers$SUBJECTID[outliers$ROI == "Amyg" &
+                               outliers$contrast == "setback"] , NA, setback_Amyg),
+         reward_Amyg =ifelse(SUBJECTID %in% outliers$SUBJECTID[outliers$ROI == "Amyg" &
+                               outliers$contrast == "reward"] , NA, reward_Amyg),
+         setback_vmPFC = ifelse(SUBJECTID %in% outliers$SUBJECTID[outliers$ROI == "vmPFC" &
+                               outliers$contrast == "setback"] , NA, setback_vmPFC),
+         reward_vmPFC =ifelse(SUBJECTID %in% outliers$SUBJECTID[outliers$ROI == "vmPFC" &
+                               outliers$contrast == "reward"] , NA, reward_vmPFC)) %>%
+  na.omit()
+
+# N = 91, 6 subjects excluded. 
+length(unique(beh_scan_ECA_long_WSLS$SUBJECTID))
+
+```  
+
+## full model with all sig interactions and brain measures: NS
+no brain measures relate to behavior! 
+```{r}
+full_mod_FB1 <- glmer(stay_shift ~ Feedback_prior * Effort_Choice_prior +
+                   Trial_Number*Effort_Choice_prior + #*Feedback_prior + 
+                AGE.c *Effort_Choice_prior + #*Feedback_prior + 
+                PC1_log*Effort_Choice_prior + #*Feedback_prior 
+                perceived_reinforce * Feedback_prior +
+                SEX.c +  proportion_hard.c +
+                Reinforce_rate.c +
+                setback_Amyg + reward_Amyg + setback_vmPFC + 
+                median_motor_RT_ave + Trial_Number + 
+                  
+                (1 | SUBJECTID), family = binomial, 
+              data = beh_scan_ECA_long_WSLS)
+summary(full_mod_FB1)
+```
+
+
+

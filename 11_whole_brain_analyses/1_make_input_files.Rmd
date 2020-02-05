@@ -1,0 +1,185 @@
+---
+title: "make covariates for whole brain models"
+author: "Michelle.VanTieghem"
+date: "Jan 9, 2020"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    df_print: paged
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../0_R_analysis_setup_file.R")
+```
+
+
+
+# load data you'll need! 
+
+```{r}
+
+load("../10_planned_analyses/COMP_ECA/2_Planned_Analyses/data/all_pacct_effort_data_with_PCA.rda")
+
+df <- beh_scan_ECA_wide %>%
+  dplyr::select(SUBJECTID, AGE,SEX, PC1_log,
+         total_TRs_censored, 
+         meanFD_all_TRs,
+         perceived_effort_ave, 
+         perceived_control, 
+         perceived_reinforce, 
+         win_feeling, lose_feeling, 
+         motivated, frustrated, 
+         prop_hard_choices) %>%
+  na.omit()
+nrow(df)
+
+```
+
+## check for outliers 
+```{r}
+load("../10_planned_analyses/COMP_ECA/2_Planned_Analyses/tables/choice_contrast_betas_outlier_subjects.Rdata")
+
+load("../10_planned_analyses/COMP_ECA/2_Planned_Analyses/tables/Feedback_betas_outlier_subjects.Rdata")
+
+# most subjects from these lists are outliers in more than 1 contrast! 
+outlier_df <- data.frame(rbind(choice_contrast_outlier_subjects, FB_outlier_subjects)) %>%  group_by(SUBJECTID) %>%  
+  dplyr::summarize(n= n())
+
+# 12 potential subjects to exclude 
+nrow(outlier_df)
+
+usable_df <- df %>%
+  filter(!SUBJECTID %in% outlier_df$SUBJECTID)
+N_subs <- nrow(usable_df)  
+```
+
+## get info for which runs are usable per subj
+```{r}
+
+subs_with_2runs <- read.table("../5_brain_behav_inclusion/sublists/sublists_include_2_runs2019-12-04.txt", header = F) %>%
+  rename(SUBJECTID = V1)
+
+subs_with_2runs_usable <- subs_with_2runs %>%  
+  filter(SUBJECTID %in% usable_df$SUBJECTID)
+  
+subs_with_run1 <- read.table("../5_brain_behav_inclusion/sublists/sublists_include_Run1_only2019-12-04.txt", header = F) %>%
+  rename(SUBJECTID = V1) %>%
+  mutate(RunNumber = "run1")
+nrow(subs_with_run1)
+
+subs_with_run1_usable <- subs_with_run1 %>%  
+  filter(SUBJECTID %in% usable_df$SUBJECTID)
+
+nrow(subs_with_run1_usable)
+
+subs_with_run2 <- read.table("../5_brain_behav_inclusion/sublists/sublists_include_Run2_only2019-12-04.txt", header = F) %>%
+  rename(SUBJECTID = V1) %>%
+  mutate(RunNumber = "run2") 
+nrow(subs_with_run2)
+  
+# 5 of these 9 subjects are outliers. 
+subs_with_run2_usable <- subs_with_run2 %>%
+  filter(SUBJECTID %in% usable_df$SUBJECTID)
+nrow(subs_with_run2_usable)
+```
+
+
+
+# COMP ECA
+
+```{r}
+# make basic model covariates 
+usable_df.c <- usable_df %>%
+  mutate(AGE.c = AGE- mean(AGE), 
+         SEX.c = SEX - mean(SEX), 
+         PC1_log.c =  PC1_log - mean(PC1_log), 
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored),
+         meanFD_all_TRs.c = meanFD_all_TRs - mean(meanFD_all_TRs),
+         perceived_effort_ave.c = perceived_effort_ave - mean(perceived_effort_ave), 
+         perceived_reinforce.c = perceived_reinforce - mean(perceived_reinforce),
+         perceived_control.c = perceived_control - mean(perceived_control), 
+         win_feeling.c = win_feeling - mean(win_feeling), 
+         lose_feeling.c = lose_feeling - mean(lose_feeling), 
+         motivated.c = motivated - mean(motivated), 
+         frustrated.c = frustrated - mean(frustrated), 
+         prop_hard_choices.c = prop_hard_choices - mean(prop_hard_choices))
+
+covariates_ECA <- usable_df.c %>%
+  mutate(mean = 1) %>%
+  dplyr::select(mean, PC1_log.c, AGE.c, SEX.c, meanFD_all_TRs.c)
+
+head(covariates_ECA)
+
+# make covariates with choice behavior, perceived effort, motivation, frustrated, perceived reinforcement
+
+covariates_ECA_full <- usable_df.c %>% 
+  mutate(mean = 1) %>%
+  dplyr::select(mean,PC1_log.c, AGE.c, SEX.c, meanFD_all_TRs.c, 
+                prop_hard_choices.c, perceived_effort_ave.c, 
+                motivated.c, frustrated.c, perceived_reinforce.c)
+
+head(covariates_ECA_full)
+
+
+# save all of the files! 
+write.table(covariates_ECA, file = paste0("covariate_files/COMP_ECA_covariates_N", N_subs, ".txt"), quote = F, row.names = F, col.names = F)
+
+write.table(covariates_ECA_full, file = paste0("covariate_files/COMP_ECA_covariates_full_mod_N", N_subs,".txt"), quote = F, row.names = F, col.names = F)
+
+
+
+```
+
+## make input files for each cope, based on whether have 1 or 2 runs 
+```{r}
+study_dir <- "/danl/PACCT/subject_data/derivatives/effort_reward/"
+
+# load the cope key that matches number with contrast.
+load("../6_brain_preproc_level1_by_run/complete_EV_model_cope_key.Rdata")
+
+copes_to_run <- cope_key %>%
+  filter(cope_list == "allChoices" |
+           cope_list == "allEffort" |
+           cope_list == "allFB" |
+           cope_list == "RewardFB" |
+         cope_list == "SetbackFB")
+
+for (i in 1:nrow(copes_to_run)){
+  copeN <- copes_to_run$cope_number[i]
+  contrast <- as.character(copes_to_run$cope_list[i])
+# reset for each cope 
+  input_files <- data.frame(subfile = NA)
+
+  # for each subject in the dataframe, get their input file!
+  for (sub in usable_df$SUBJECTID){
+        # if they has 2 runs....
+    if (sub %in% subs_with_2runs_usable$SUBJECTID){
+        subfile <- paste0(study_dir, sub, "/effort/model/lev2_complete.gfeat/cope", copeN, ".feat/stats/cope1.nii.gz")
+        input_files <- rbind(input_files, subfile)
+# only have usable run1 data 
+    } else if (sub %in% subs_with_run1_usable$SUBJECTID){
+          RunNumber <- 'run1'
+      subfile <- paste0(study_dir, sub, "/effort/model/preproc_lev1_", RunNumber, ".feat/stats/cope", copeN, ".nii.gz")
+      input_files <- rbind(input_files, subfile)
+      # only has usable run2 data 
+    } else if ( sub %in% subs_with_run2_usable$SUBJECTID){
+      RunNumber <- 'run2'
+      subfile <-  paste0(study_dir, sub, "/effort/model/preproc_lev1_", RunNumber, ".feat/stats/cope", copeN, ".nii.gz")
+      input_files <- rbind(input_files, subfile)
+    } 
+    # write the input files!
+    input_files <- na.omit(input_files)
+   
+    # save file for whole brain analyses
+      write.table(input_files, file = paste0("feat_input_files/cope", copeN,contrast,  "_N", N_subs,".txt"), quote = F, row.names = F, col.names = F)
+
+  }
+}
+
+head(input_files)
+
+```

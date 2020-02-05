@@ -1,0 +1,190 @@
+---
+title: "ECA effects on key press RT"
+author: "Michelle.VanTieghem"
+date: "Dec 16, 2019"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# Readme
+No actual specification curve really necessary, very robust effects 
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../../0_R_analysis_setup_file.R")
+```
+
+# load data
+```{r}
+# load all data with PCA added!
+load("../../data/all_pacct_effort_data_with_PCA.rda")
+
+```
+
+## clean data first 
+```{r}
+
+#remove outliers from RT calculations first! 
+# and also filter out trials where they didn't reach the top! 
+button_RT_df <- beh_scan_ECA_long %>%
+  filter( Effort_Choice != "Miss") %>%
+  # just making these to find outliers 
+  mutate(mean_easy = mean(median_RT_easy_button_press, na.rm = T),
+          sd_easy = sd(median_RT_easy_button_press, na.rm = T),
+         mean_hard = mean(median_RT_hard_button_press, na.rm = T), 
+         sd_hard = sd(median_RT_hard_button_press, na.rm = T),
+    # redoing nvariables omitting outliers (marked as NA)
+          median_RT_easy_button_press = ifelse(median_RT_easy_button_press < mean_easy + 3*sd_easy, median_RT_easy_button_press, NA), 
+         median_RT_hard_button_press = ifelse(median_RT_hard_button_press < mean_hard + 3*sd_hard, median_RT_hard_button_press, NA),
+         median_RT_button_press = ifelse(Effort_Choice.n == 0, median_RT_easy_button_press, 
+                                         ifelse(Effort_Choice.n == 1, median_RT_hard_button_press, NA)), 
+         # add perceived effort by trial. 
+         perceived_effort_by_trial = ifelse(Effort_Choice.n == 1, hard_effort_perceived, 
+                                            easy_effort_perceived)) %>%
+  dplyr::select(SUBJECTID, Effort_Choice.n, Effort_Choice, 
+                GROUP_ECA.x, PC1_log, AGE.c, SEX.c, IQ.c, 
+         total_censored_TRs, Reinforce_rate.c, 
+         Trial_Number, max_keys, Accuracy, 
+         frustrated, perceived_control, motivated,
+         perceived_effort_ave, perceived_effort_by_trial,
+         effort_key_count, median_RT_button_press,
+         perceived_reinforce, median_motor_RT_ave, 
+         win_feeling, lose_feeling)  %>%
+  mutate(effort_key_overshoot = effort_key_count -max_keys) %>%
+  na.omit() 
+
+N_subs <- length(unique(button_RT_df$SUBJECTID))
+N_subs
+
+
+range(button_RT_df$effort_key_overshoot, na.rm = T) # so why would this not = 0?
+```
+
+## check data 
+
+```{r}
+key_press_table <- button_RT_df %>%
+  group_by(Effort_Choice) %>%
+  dplyr::summarize(median_RT_button_press = mean(median_RT_button_press, na.rm = T), 
+                   sd_key_overshoot = sd(median_RT_button_press, na.rm = T), 
+                   upper = median_RT_button_press + 2*sd_key_overshoot, 
+                   lower = median_RT_button_press - 2*sd_key_overshoot)
+key_press_table 
+
+range(button_RT_df$median_RT_button_press)
+```
+
+```{r}
+
+ggplot(data = button_RT_df, aes(x = Effort_Choice, y = median_RT_button_press)) + 
+  geom_jitter(color = dark_blue, alpha = 0.1, width = 0.1) + 
+  geom_boxplot() + 
+  geom_point(data = key_press_table, aes(x = Effort_Choice, y = median_RT_button_press), 
+             size = 3) 
+
+
+```
+
+# overshoots in button presses 
+
+## basic model with covariates 
+motor speed, effort, age, Trial N, max keys
+```{r}
+
+key_RT_full <- lmer(median_RT_button_press ~ PC1_log + Effort_Choice.n +
+                            AGE.c + SEX.c +  Trial_Number +
+                           median_motor_RT_ave + max_keys + 
+                         (1 + Effort_Choice.n | SUBJECTID),
+                       # can't include trial number random effects with lmer. 
+                           # (1 + Effort_Choice.n + Trial_Number.c | SUBJECTID),
+                          data = filter(button_RT_df, Accuracy == 1 & median_RT_button_press > 0.002))
+summary(key_RT_full)
+```
+
+## full model with self-report data
+huge effect of perceived reinforcement
+```{r}
+
+key_RT_full <- lmer(median_RT_button_press ~ PC1_log + Effort_Choice.n +
+                            AGE.c + SEX.c +  Trial_Number +
+                           median_motor_RT_ave + max_keys +
+                         perceived_reinforce + perceived_control + 
+                              lose_feeling + win_feeling + 
+                              frustrated + motivated + 
+                           #   perceived_effort_ave.c +
+                         perceived_effort_by_trial+
+                         (1 + Effort_Choice.n | SUBJECTID),
+                       # can't include trial number random effects with lmer. 
+                           # (1 + Effort_Choice.n + Trial_Number.c | SUBJECTID),
+                         data = filter(button_RT_df, Accuracy == 1 & median_RT_button_press > 0.002))
+summary(key_RT_full)
+
+```
+
+
+## test model with significant effects and necessary covariates
+sig effect of perceived effort, motor, max keys, trial N
+```{r}
+key_RT_test <- lmer(median_RT_button_press ~ PC1_log + Effort_Choice.n +
+                            AGE.c +  Trial_Number +  max_keys + 
+                         median_motor_RT_ave +
+                           perceived_reinforce + 
+                         (1 + Effort_Choice.n | SUBJECTID),
+                       # can't include trial number random effects with lmer. 
+                           # (1 + Effort_Choice.n + Trial_Number.c | SUBJECTID),
+                        data = filter(button_RT_df, Accuracy == 1 & median_RT_button_press > 0.002))
+summary(key_RT_test)
+```
+
+
+
+## test without max keys 
+sig effect of perceived effort, motor, choice
+```{r}
+key_RT_test <- lmer(median_RT_button_press ~ PC1_log + Effort_Choice.n +
+                            AGE.c +  Trial_Number + 
+                         median_motor_RT_ave + perceived_reinforce + 
+                         (1 + Effort_Choice.n | SUBJECTID),
+                       # can't include trial number random effects with lmer. 
+                           # (1 + Effort_Choice.n + Trial_Number.c | SUBJECTID),
+                        data = filter(button_RT_df, Accuracy == 1))
+summary(key_RT_test)
+```
+
+## test without filtering for accuracy 
+including trials that didn't get to top of green bar \
+ 
+sig effect of effort, motor, age, choice
+```{r}
+key_RT_test <- lmer(median_RT_button_press ~ PC1_log + Effort_Choice.n +
+                            AGE.c +  Trial_Number + 
+                         median_motor_RT_ave + perceived_reinforce +
+                         (1 + Effort_Choice.n | SUBJECTID),
+                       # can't include trial number random effects with lmer. 
+                           # (1 + Effort_Choice.n + Trial_Number.c | SUBJECTID),
+                        data = button_RT_df)
+summary(key_RT_test)
+```       
+
+
+plot effect: slower key press if higher perceived rewards
+```{r}
+effect_df <- data.frame(effect("perceived_reinforce", key_RT_test))
+
+effect_plot <- ggplot(data = effect_df, aes(x = perceived_reinforce, y = fit)) + 
+  geom_line(color = dark_blue) + 
+  geom_ribbon(aes(ymin = lower, ymax  = upper),alpha = 0.2, fill = dark_blue) + 
+  geom_jitter(data = button_RT_df, aes(x = perceived_reinforce, y = median_RT_button_press), 
+              width = 0.05, height = 0, alpha = 0.2, color = dark_blue) + 
+  ylab("median key press RT") + xlab("Perceived Reinforcement")
+
+effect_plot
+ggsave(effect_plot, file = "../../figures/targeted_SCA/key_press_RT_by_perceived_reinforcement.png", 
+       height = 4, width = 6)
+```

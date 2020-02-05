@@ -1,0 +1,306 @@
+---
+title: "specification curves with permutation test"
+author: "Michelle.VanTieghem"
+date: "1/5/2020"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes: 
+code for specification curves from Dani Cosme
+https://github.com/dcosme/specification-curves/blob/master/SCA_tutorial.Rmd
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../../0_R_analysis_setup_file.R")
+```
+
+# load data
+```{r}
+# load all data with PCA added!
+load("../data/all_pacct_effort_data_with_PCA.rda")
+```
+
+## clean data
+```{r} 
+FB_level_order <- c("vmPFC", "mPFC", "VS", "Amyg")
+
+# get just reward ROIs
+reward_df <- beh_scan_ECA_wide %>%
+  rename(Amyg = reward_Amyg,
+         mPFC = reward_FB_mPFC, 
+         vmPFC = reward_vmPFC, 
+         VS = reward_VS) %>%
+  select(-starts_with("choice"), -starts_with("setback"), 
+         -starts_with("feedback"), -starts_with("reward_setback")) %>%
+  gather(key = "ROI", value = "reward_beta",  vmPFC, mPFC, VS, Amyg) %>%
+  filter(!is.na(reward_beta))
+
+# check right number of subjects! 
+length(unique(reward_df$SUBJECTID))
+
+# get just setback ROIs
+setback_df <- beh_scan_ECA_wide %>%
+   rename(Amyg = setback_Amyg, 
+          vmPFC = setback_vmPFC, 
+         mPFC = setback_FB_mPFC, 
+         VS = setback_VS) %>%
+  select(-starts_with("choice"), -starts_with("reward"), 
+         -starts_with("feedback"), -starts_with("reward_setback")) %>%
+  gather(key = "ROI", value = "setback_beta",  vmPFC, mPFC, VS,  Amyg) %>%
+  select(SUBJECTID, ROI, setback_beta) %>%
+  filter(!is.na(setback_beta))
+
+# combine them in long format
+FB_df <- merge(reward_df, setback_df, by = c("SUBJECTID", "ROI")) %>%
+  mutate(reward_minus_setback = reward_beta - setback_beta,
+        ROI = factor(ROI, levels = FB_level_order),
+         AGE.c = AGE.x - mean(AGE.x, na.rm = T),
+         SEX.c = SEX.x - mean(SEX.x, na.rm = T), 
+         IQ.c = IQ- mean(IQ, na.rm = T),
+         total_TRs_censored.c = total_TRs_censored - mean(total_TRs_censored, na.rm = T),
+         Reinforce_rate.c = Reinforce_rate - mean(Reinforce_rate, na.rm = T), 
+         GROUP_ECA.c = ifelse(GROUP_ECA == "COMP", -1, 1), 
+        PC1_log.c = PC1_log -mean(PC1_log)) %>%
+  gather(key = "contrast", value = "beta", reward_beta, setback_beta, reward_minus_setback) %>%
+  filter(!is.na(beta))
+
+# rename levels of contrast factor
+FB_df$contrast <- as.factor(ifelse(FB_df$contrast == "reward_beta", "reward", ifelse(FB_df$contrast == "setback_beta", "setback", FB_df$contrast)))
+FB_df$diff_pos_affect <- FB_df$win_feeling - FB_df$lose_feeling
+
+```
+
+## remove outliers
+calculated already.
+```{r}
+load(file = "../tables/Feedback_betas_outlier_subjects.Rdata")
+setback_outliers <- FB_outlier_subjects %>% 
+  filter(ROI == "Amyg" & contrast == "setback")
+
+FB_df2 <- FB_df %>%
+  mutate(beta = ifelse(SUBJECTID %in% setback_outliers$SUBJECTID , NA, beta))
+  
+```  
+
+## filter only setback data 
+```{r}
+FB_df3 <- FB_df2 %>%
+  filter(contrast == "setback" & ROI == "Amyg")  %>% 
+  select(beta, PC1_log.c, AGE.c, SEX.c, IQ.c, Fam_inc_needs.c, 
+         total_TRs_censored.c, Reinforce_rate.c, 
+         frustrated, perceived_control, motivated, perceived_effort_ave, 
+         perceived_reinforce, diff_pos_affect)
+nrow(FB_df3)
+
+# omit NAs
+FB_df4 = FB_df3 %>% 
+  na.omit()
+
+```
+
+# using code from Dani Cosme for sensitivity analysis 
+
+```{r}
+library(purrr)
+library(cowplot)
+```
+
+
+## full model, run normally 
+
+```{r}
+
+full.model = lm(beta ~ PC1_log.c + AGE.c  + SEX.c + IQ.c + Fam_inc_needs.c + 
+                       total_TRs_censored.c +  Reinforce_rate.c  + 
+                      frustrated + perceived_control +  motivated +  
+                      perceived_effort_ave + perceived_reinforce + diff_pos_affect , 
+                data = FB_df4)
+summary(full.model)
+```
+
+## run all nested models using `dredge` from `MuMIn`
+* max number of predictors = 30
+```{r dredge}
+# set na.action for dredge
+options(na.action = "na.fail")
+
+# run all possible nested models
+all.models = MuMIn::dredge(full.model, rank = "AIC", extra = "BIC")
+```
+
+
+##  PC1 
+  extract coefficients and p-values
+```{r  }
+# extract parameter estimate 
+model_params = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  select(model_num, term, estimate) %>%
+  spread(term, estimate) %>%
+  select(-starts_with("sd"))
+# extract p-values for the term of interest! 
+model_ps = MuMIn::get.models(all.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "PC1_log.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+```
+
+calculate the prop of models with significant coefficient to use in permutation test.
+```{r}
+  # number of models with PC1 as a significant coefficient
+  N_sig <- sum(model_ps$p.value < 0.05)
+  # proportion of all nested models with significant coefficient
+  orig_prop_sig <- N_sig/nrow(model_ps)
+```
+
+ plot specification curve
+* red = statistically significant values at p < .05
+* black = p > .05
+```{r , fig.width=10, fig.height=6}
+# merge and tidy for plotting
+plot.data = left_join(model_ps, model_params, by = "model_num") %>%
+  arrange(estimate) %>%
+  mutate(specification = row_number(),
+         significant.p = ifelse(p.value < .05, "yes", "no")) %>%
+  gather(variable, value, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p) %>% 
+  mutate(variable = gsub("[()]", "", variable),
+         variable = gsub("Intercept", "intercept", variable),
+         variable = gsub("as.factor(vs)1", "vs", variable)) %>%
+  spread(variable, value)  %>%
+  mutate(upper = estimate + 2*std.error, lower = estimate - 2*std.error)
+# get names of variables included in model
+variable.names = names(select(plot.data, -estimate, -specification, -model_num, -std.error, -p.value, -significant.p))
+# plot top panel
+top = plot.data %>%
+  ggplot(aes(specification, estimate,, color = significant.p)) +
+    geom_errorbar(aes(ymin = lower, ymax = upper), width = 0, alpha = 0.2) +
+    geom_point(size = 4) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "blue", size = 2) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "", y = "coefficient for PC1 (ECA score)\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# set plotting order for variables based on number of times it's included in better fitting models
+order = plot.data %>%
+  arrange(estimate) %>%
+  mutate(significant.p.num = ifelse(significant.p == "yes", 1, 0)) %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  filter(!is.na(value)) %>%
+  group_by(variable) %>%
+  mutate(order = sum(significant.p.num)) %>%
+  select(variable, order) %>%
+  unique()
+# rename variables and plot bottom panel
+bottom = plot.data %>%
+  gather(variable, value, eval(variable.names)) %>% 
+  mutate(value = ifelse(!is.na(value), "|", ""),
+         variable = ifelse(variable == "(Intercept)", "intercept",
+                    ifelse(variable == "as.factor(vs)1", "vs", variable))) %>%
+  left_join(., order, by = "variable") %>%
+  ggplot(aes(specification, reorder(variable, order), color = significant.p)) +
+    geom_text(aes(label = value)) +
+    scale_color_manual(values = c("black", "red")) +
+    labs(x = "\nspecification number", y = "variables\n") + 
+    theme_minimal(base_size = 11) +
+    theme(legend.title = element_text(size = 10),
+          legend.text = element_text(size = 9),
+          axis.text = element_text(color = "black"),
+          axis.line = element_line(colour = "black"),
+          legend.position = "none",
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+# join panels
+(wt = cowplot::plot_grid(top, bottom, ncol = 1, align = "v", labels = c('A', 'B')))
+#ggsave(wt, file = "../figures/specification_curves/test", height = 8, width  = 20)
+```
+
+## null distribution of effects for permutation test
+```{r, message = F, warning = F}
+
+# set the number of permutations. For testing, can lower N to 100
+nPerms = 100
+# create an empty dataframe to save 
+permCoefs = rep(NA, nPerms)
+
+# run permutation loop 
+for (i in 1:nPerms){
+  # randomly shuffle the outcome data (betas)
+  FB_df4$betaShuffle = sample(FB_df4$beta, size = nrow(FB_df4), replace = FALSE)
+  # re-run the nested models with the shuffled outcome data 
+  null.model = lm(betaShuffle ~ PC1_log.c + AGE.c  + SEX.c + IQ.c + Fam_inc_needs.c + 
+                       total_TRs_censored.c +  Reinforce_rate.c  + 
+                      frustrated + perceived_control +  motivated +  
+                      perceived_effort_ave + perceived_reinforce + diff_pos_affect , 
+                data = FB_df4)
+  null.models = MuMIn::dredge(null.model, rank = "AIC", extra = "BIC")
+  
+  # get the pvalues from the null models 
+  null.model_ps = MuMIn::get.models(null.models, subset = TRUE) %>%
+  tibble() %>%
+  rename("model" = ".") %>%
+  mutate(tidied = purrr::map(model, broom::tidy),
+         model_num = row_number()) %>%
+  select(model_num, tidied) %>%
+  unnest() %>%
+  filter(term == "PC1_log.c") %>%
+  ungroup() %>%
+  select(model_num, estimate, std.error, p.value)
+  # number of models with PC1 as a significant coefficient
+  N_sig <- sum(null.model_ps$p.value < 0.05)
+  # proportion of all nested models with significant coefficient
+  prop_sig <- N_sig/nrow(null.model_ps)
+  # add this to your datafrrame to create a null distribution.
+  permCoefs[i] <- prop_sig
+}
+
+#represents the null distribution (when there is no real effect)
+
+```
+
+
+
+## get a p-value 
+What finding is robust: you want your coefficients to be significant more often than 95% than the permuted specification curves. so the resulting value shuld be > 95.
+```{r}
+# Relative to the original SCA, what proportion of shuffled SCAs generated a significant p-value? 
+sum(abs(permCoefs) > orig_prop_sig) / nPerms 
+#> origParam)/nPerms
+```
+
+
+# Visualize it
+```{r}
+permResults = data.frame(permCoefs = permCoefs)
+
+perm_test_results <- ggplot(permResults) + 
+  geom_histogram(aes(x = permCoefs)) +
+  geom_vline(xintercept = orig_prop_sig, color = 'red')
+ggsave(perm_test_results, file = "../figures/specification_curves/Amyg_setback_by_PC1_permutation.png")
+```

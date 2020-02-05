@@ -1,0 +1,153 @@
+---
+title: "WSLS specification curve analysis"
+author: "Michelle.VanTieghem"
+date: "10/10/2019"
+output:
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  pdf_document:
+    toc: yes
+---
+
+# notes
+Dec 1 2019: updated with new MICM variables and using PC1_log instead of sqrt.\
+need to re-run brms models!!  and only use brms for plots. \
+also only using scan sample since behavior differs!! 
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../../0_R_analysis_setup_file.R")
+```
+
+```{r}
+# load all data with PCA added!
+load("../data/all_pacct_effort_data_with_PCA.rda")
+```
+
+## set up data
+```{r}
+
+beh_scan_ECA_long <- beh_scan_ECA_long %>%
+  dplyr::select(SUBJECTID, GROUP_ECA.x, Effort_Choice, Effort_Choice.n, 
+                PC1_log , Trial_Number.c , IQ.c,
+                          AGE.c , SEX.c , Reinforce_rate.c , perceived_effort_ave.c , 
+                         motivated , perceived_reinforce , frustrated ,
+                        lose_feeling , win_feeling , perceived_control , 
+                         key_resp_choice.rt,
+                          median_motor_RT_ave) %>%
+  na.omit() 
+
+beh_scan_ECA_wide <- beh_scan_ECA_wide %>%
+  dplyr::select(SUBJECTID, GROUP_ECA, prop_hard_choices, PC1_log , IQ.c, 
+                          AGE.c , SEX.c , Reinforce_rate , perceived_effort_ave , 
+                         motivated , perceived_reinforce , frustrated ,
+                        lose_feeling , win_feeling , perceived_control , 
+                          median_motor_RT_ave) %>%
+  na.omit()
+```
+
+# Set full models 
+
+## full model with all covariates
+```{r}
+full_mod <- lmer(Effort_Choice.n ~ AGE.c +  PC1_log +
+                   Reinforce_rate + 
+                SEX.c +  median_motor_RT_ave + Trial_Number.c + IQ.c +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_long)
+summary(full_mod)
+```
+
+
+## full model with all self-report measures
+none of them are significant! maybe winfeeling
+```{r}
+full_mod_all <- lmer(Effort_Choice.n ~ AGE.c +  PC1_log +
+                perceived_reinforce + Reinforce_rate.c +
+                  perceived_effort_ave + perceived_control + 
+                frustrated + motivated + win_feeling + lose_feeling +
+                SEX.c +  median_motor_RT_ave + Trial_Number.c + IQ.c +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_long)
+summary(full_mod_all)
+```
+
+
+## test model with only significant stuff or necessary covariates 
+then run all combos of that model. 
+```{r}
+test_mod <- lmer(Effort_Choice.n ~ AGE.c +  PC1_log +
+                 Reinforce_rate.c +
+                  win_feeling + 
+                 median_motor_RT_ave + Trial_Number.c +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_long)
+summary(test_mod)
+```
+
+## add brain measures 
+```{r}
+test_mod <- lmer(Effort_Choice.n ~ AGE.c +  PC1_log +
+                 Reinforce_rate.c +
+                  win_feeling + 
+                 median_motor_RT_ave + Trial_Number.c +
+                  setback_Amyg + reward_vmPFC + reward_VS + reward_Amyg +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_long)
+summary(test_mod)
+```
+
+## run all model iterations 
+
+## see how strong 
+
+
+# brain measures (hard-easy choice subsample)
+```{r}
+
+load("../data/all_pacct_effort_data_with_PCA.rda")
+
+# need to make sub-sample 
+beh_scan_ECA_long_ss <- beh_scan_ECA_long %>%
+  dplyr::select(SUBJECTID, GROUP_ECA.x, Effort_Choice, Effort_Choice.n, 
+                PC1_log , Trial_Number.c , IQ.c,
+                          AGE.c , SEX.c , Reinforce_rate.c , perceived_effort_ave.c , 
+                         motivated , perceived_reinforce , frustrated ,
+                        lose_feeling , win_feeling , perceived_control , 
+                         key_resp_choice.rt,
+                          median_motor_RT_ave,
+                hard_easy_choice_choice_mPFC, hard_easy_choice_VS, hard_easy_choice_ACC) %>%
+  na.omit() 
+```
+
+## establish same effects replicate in sub-sample 
+ now PC1 is a trend?! 
+```{r}
+test_mod_ss <- lmer(Effort_Choice.n ~ AGE.c +  PC1_log +
+                 Reinforce_rate.c +
+                  win_feeling + 
+                 median_motor_RT_ave + Trial_Number.c +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_long_ss)
+summary(test_mod_ss)
+```
+
+
+## full model with all choice brain measures of interest
+now PC1 is significant!!! not helpful. 
+```{r}
+
+test_mod_ss_brain <- lmer(Effort_Choice.n ~ AGE.c +  PC1_log +
+                 Reinforce_rate.c +
+                  win_feeling + 
+                 median_motor_RT_ave + Trial_Number.c +
+                   hard_easy_choice_choice_mPFC + hard_easy_choice_VS + hard_easy_choice_ACC +
+                (1 | SUBJECTID),
+              data = beh_scan_ECA_long_ss)
+summary(test_mod_ss_brain)                
+                
+
+```

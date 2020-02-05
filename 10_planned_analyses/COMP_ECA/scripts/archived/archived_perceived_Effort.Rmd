@@ -1,0 +1,262 @@
+
+# follow up: perceived effort on choice behavior (brms models)
+Notes: looking at this from different angles: trial by trial, difference between hard and easy, average effort, and hard only.
+
+## make some new variables 
+```{r}
+# add  perceived  effort by condition as a trial-by-trial measure.
+beh_scan_ECA_long <- beh_scan_ECA_long %>%
+  mutate(perceived_effort  = ifelse(Effort_Choice.n == 1, hard_effort_perceived, 
+                                    ifelse(Effort_Choice.n == 0, easy_effort_perceived, NA)),
+         perceived_effort_diff =  (hard_effort_perceived - easy_effort_perceived), 
+         perceived_effort_ave = (hard_effort_perceived + easy_effort_perceived)/2, 
+         # mean centered
+         PC1_log.c = PC1_log - mean(PC1_log, na.rm = T),
+         perceived_effort.c = perceived_effort - mean(perceived_effort, na.rm =T),
+         perceived_effort_diff.c = perceived_effort_diff - mean(perceived_effort_diff, na.rm =T),
+         perceived_effort_ave.c = perceived_effort_ave - mean(perceived_effort_ave, na.rm =T), 
+         hard_effort_perceived.c = hard_effort_perceived - mean(hard_effort_perceived, na.rm = T))
+```
+
+## 1. perceived effort by trial 
+### perceived effort is SIG and group is  also sIG!
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_choice_brms.Rdata")  
+
+blm_table(perceived_effort_choice_brms)
+```
+
+### perceived effort X group: SIG!
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_choice_brms_gxpe.Rdata")  
+blm_table(perceived_effort_choice_brms_gxpe)
+```
+
+### plot of sig group effects, when accounting for perceived effort
+ECA is less likely to choose the hard task!! 
+```{r}
+new_df <- data.frame(expand.grid(GROUP_ECA.x = c("COMP", "ECA"),
+                                 perceived_effort = mean(beh_scan_ECA_long$perceived_effort, na.rm = T),
+                                 AGE.c = 0, Trial_Number.c =0, Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(perceived_effort_choice_brms, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(intercept = as.factor('intercept'), 
+         Trial_Number = Trial_Number.c + max(Trial_Number.c))
+
+effect_plot <- ggplot(effect_df, aes(x = GROUP_ECA.x, y = fit)) +
+  geom_point(size = 3)  + 
+ geom_errorbar(aes(ymin= lower, ymax= upper), width = 0.25) +
+ geom_hline(aes(yintercept = 0.5), linetype = "dashed") + 
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("GROUP") + ylim(0, 1)
+effect_plot
+
+ggsave(effect_plot, file = "figures/perceived_effort/choice_by_GROUP_with_perceived_effort.pdf", width = 3, height = 4)
+```
+
+### plot of SIG perceived effort X GROUP effects
+comparisons have a lower threshold of perceived effort to choose  hard? s
+should I only use perceived effort for the hard condition? 
+or shhuld I use the differrence between easy and hard? 
+```{r}
+new_df <- data.frame(expand.grid(GROUP_ECA.x = c("COMP", "ECA"),
+                                 perceived_effort = seq(from = 1, to = 4, by  = 0.1),
+                                 AGE.c = 0, Trial_Number.c =0, Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(perceived_effort_choice_brms_gxpe, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(intercept = as.factor('intercept'), 
+         Trial_Number = Trial_Number.c + max(Trial_Number.c))
+
+effect_plot <- ggplot(effect_df, aes(x = perceived_effort, y = fit)) +
+  geom_line(color = dark_blue)  + facet_grid(~GROUP_ECA.x) + 
+ geom_ribbon(aes(ymin= lower, ymax= upper), alpha = 0.25, fill = dark_blue) +
+    #geom_point(data = perceived_df, color= dark_blue,
+     #  aes(x = perceived_effort_rating, y = prop_hard_choices), 
+      # alpha = 0.2, width = 0.05, height =0.0) +
+ geom_hline(aes(yintercept = 0.5), linetype = "dashed") + 
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("Perceived effort") + ylim(0, 1)
+effect_plot
+
+ggsave(effect_plot, file = "figures/perceived_effort/choice_by_groupXperceived_effort.pdf", width = 3, height = 4)
+```
+
+
+## 2. perceived effort diff (hard-easy)
+remove kids with negative values?
+```{r}
+
+hist(beh_scan_ECA_long$perceived_effort_diff.c)
+```
+
+### perceived diff is NS & group is NS
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_diff_choice_brms_g.Rdata")  
+blm_table(perceived_effort_diff_choice_brms_g)
+```
+
+
+### difference in perceived effort x group: NS
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_diff_choice_brms_gxpe.Rdata")  
+blm_table(perceived_effort_diff_choice_brms_gxpe)
+```
+
+### plot NS effects 
+```{r}
+
+new_df <- data.frame(expand.grid(GROUP_ECA.x = c("COMP", "ECA"),
+                                 perceived_effort_diff.c = seq(from = -3, to = 3, by  = 0.1),
+                                 AGE.c = 0, Trial_Number.c =0, Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(perceived_effort_diff_choice_brms_g, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(intercept = as.factor('intercept'), 
+         Trial_Number = Trial_Number.c + max(Trial_Number.c))
+
+effect_plot <- ggplot(effect_df, aes(x = perceived_effort_diff.c, y = fit)) +
+  geom_line(color = dark_blue)  + facet_grid(~GROUP_ECA.x) + 
+ geom_ribbon(aes(ymin= lower, ymax= upper), alpha = 0.25, fill = dark_blue) +
+   # geom_point(data = perceived_df, color= dark_blue,
+    #   aes(x = perceived_effort_diff.c, y = prop_hard_choices), 
+     #  alpha = 0.2, width = 0.05, height =0.0) +
+ geom_hline(aes(yintercept = 0.5), linetype = "dashed") + 
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("Perceived effort difference (Hard-Easy)") + ylim(0, 1)
+effect_plot
+
+ggsave(effect_plot, file = "figures/perceived_effort/choice_by_perceived_effort_diff_and_group.pdf", width = 3, height = 4)
+```
+
+## 3. average perceived effort (hard + easy)
+### perceived average is NS & group is NS
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_ave_choice_brms_g.Rdata")  
+blm_table(perceived_effort_ave_choice_brms_g)
+```
+
+
+### average perceived effort x group: NS
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_ave_choice_brms_gxpe.Rdata")  
+blm_table(perceived_effort_ave_choice_brms_gxpe)
+```
+
+
+### plot NS effects 
+```{r}
+range(beh_scan_ECA_long$perceived_effort_ave.c, na.rm  = T)
+new_df <- data.frame(expand.grid(GROUP_ECA.x = c("COMP", "ECA"),
+                                 perceived_effort_ave.c = seq(from = min(beh_scan_ECA_long$perceived_effort_ave.c, na.rm  = T), to = max(beh_scan_ECA_long$perceived_effort_ave.c, na.rm  = T), by  = 0.1),
+                                 AGE.c = 0, Trial_Number.c =0, Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(perceived_effort_ave_choice_brms_g, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(intercept = as.factor('intercept'), 
+         Trial_Number = Trial_Number.c + max(Trial_Number.c))
+
+effect_plot <- ggplot(effect_df, aes(x = perceived_effort_ave.c, y = fit)) +
+  geom_line(color = dark_blue)  + facet_grid(~GROUP_ECA.x) + 
+ geom_ribbon(aes(ymin= lower, ymax= upper), alpha = 0.25, fill = dark_blue) +
+   # geom_point(data = perceived_df, color= dark_blue,
+    #   aes(x = perceived_effort_diff.c, y = prop_hard_choices), 
+     #  alpha = 0.2, width = 0.05, height =0.0) +
+ geom_hline(aes(yintercept = 0.5), linetype = "dashed") + 
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("Average perceived effort (Hard + Easy)") + ylim(0, 1)
+effect_plot
+
+ggsave(effect_plot, file = "figures/perceived_effort/choice_by_perceived_effort_ave_and_group.pdf", width = 3, height = 4)
+```
+
+## 4. hard effort perceived
+### perceived average is NS & group is NS
+```{r}
+load("brms_models/results/perceived_effort/hard_effort_perceived_choice_brms_g.Rdata")  
+blm_table(hard_effort_perceived_choice_brms_g)
+```
+
+### average perceived effort x group: NS
+```{r}
+load("brms_models/results/perceived_effort/perceived_effort_ave_choice_brms_gxpe.Rdata")  
+blm_table(perceived_effort_ave_choice_brms_gxpe)
+```
+
+### plot NS effects 
+```{r}
+range(beh_scan_ECA_long$hard_effort_perceived.c, na.rm  = T)
+new_df <- data.frame(expand.grid(GROUP_ECA.x = c("COMP", "ECA"),
+                                 hard_effort_perceived.c = seq(from = min(beh_scan_ECA_long$hard_effort_perceived.c, na.rm  = T), to = max(beh_scan_ECA_long$hard_effort_perceived.c, na.rm  = T), by  = 0.1),
+                                 AGE.c = 0, Trial_Number.c =0, Reinforce_rate.c = 0, SEX.c = 0))
+
+effect_df <- fitted(hard_effort_perceived_choice_brms_g, newdata = new_df, re_formula = NA) %>%
+  cbind(new_df, .) %>%
+  rename(upper = Q97.5, 
+         lower = Q2.5, 
+         fit = Estimate) %>%
+  mutate(intercept = as.factor('intercept'), 
+         Trial_Number = Trial_Number.c + max(Trial_Number.c))
+
+effect_plot <- ggplot(effect_df, aes(x = hard_effort_perceived.c, y = fit)) +
+  geom_line(color = dark_blue)  + facet_grid(~GROUP_ECA.x) + 
+ geom_ribbon(aes(ymin= lower, ymax= upper), alpha = 0.25, fill = dark_blue) +
+   # geom_point(data = perceived_df, color= dark_blue,
+    #   aes(x = perceived_effort_diff.c, y = prop_hard_choices), 
+     #  alpha = 0.2, width = 0.05, height =0.0) +
+ geom_hline(aes(yintercept = 0.5), linetype = "dashed") + 
+   theme_classic() + theme(legend.position = "none") + 
+  ylab ("Likelihood to choose hard")  + xlab ("Average perceived effort (Hard + Easy)") + ylim(0, 1)
+effect_plot
+
+ggsave(effect_plot, file = "figures/perceived_effort/choice_by_hard_effort_perceived_and_group.pdf", width = 3, height = 4)
+```
+
+## 5. wide version of perceived effort on prop. hard 
+
+
+### hard only: NS
+```{r}
+perceived_choice_lm <- lm(prop_hard_choices.c ~  GROUP_ECA * hard_effort_perceived +
+                             median_motor_RT_hard + 
+                            AGE.c + SEX.c, 
+                          data = beh_scan_ECA_wide)
+summary(perceived_choice_lm)
+```
+
+### difference in perceived effort: NS
+```{r}
+perceived_diff_choice_lm <- lm(prop_hard_choices.c ~  GROUP_ECA * perceived_effort_diff.c + 
+                            AGE.c + SEX.c + median_motor_RT_hard, 
+                          data = beh_scan_ECA_wide)
+summary(perceived_diff_choice_lm)
+```
+
+### average perceived effort: NS
+```{r}
+perceived_diff_choice_lm <- lm(prop_hard_choices.c ~  GROUP_ECA * perceived_effort_ave.c + 
+                            AGE.c + SEX.c + median_motor_RT_hard, 
+                          data = beh_scan_ECA_wide)
+summary(perceived_diff_choice_lm)
+
+beh_scan_ECA_wide$median_motor_RT_easy
+```
+
+
+# follow-up: perceived effort on choice RT? 
+```{r}
+```
+
