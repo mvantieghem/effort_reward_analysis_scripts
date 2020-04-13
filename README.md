@@ -1,2 +1,6 @@
-# effort_reward_analysis_scripts
-new analysis scripts for effort reward project
+# Analysis scripts for Effort Reward study 
+Author: Michelle VanTieghem 
+
+# Contents: 
+## Behavioral task preprocessing 
+### 
