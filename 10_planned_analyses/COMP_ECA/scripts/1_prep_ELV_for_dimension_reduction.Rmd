@@ -30,9 +30,7 @@ library(PCAmixdata)
 
 ## load cleaned data
 ```{r}
-load("data/pacct_all_cleaned_ELV.Rdata")
-nrow(pacct_cleaned)
-
+load("../data/pacct_all_cleaned_ELV.Rdata")
 pacct_cleaned <- pacct_cleaned %>%
   mutate(SUBJECTID = as.factor(substr(IDENT_SUBID, 1, 5)))
 
@@ -70,7 +68,7 @@ pacct_effort_w_labels <- pacct_effort_w_labels %>%
   mutate(subject = as.numeric(rownames(pacct_effort_w_labels)))
 
 # KEEP THIS SUBLIST TO MATCH WITH PCA RESULTS LATER!
-save(pacct_effort_w_labels, file = "data/pacct_effort_w_labels.Rdata")
+save(pacct_effort_w_labels, file = "../data/pacct_effort_w_labels.Rdata")
 
 ```
 
@@ -133,7 +131,7 @@ scale <- function(variable){
 pacctNoLabelsCleaned <- pacctNoLabelsCleaned %>%
   mutate_all(scale) 
 
-save(pacctNoLabelsCleaned, file = "data/cleaned_ELV_for_dim_reduction.Rdata")
+save(pacctNoLabelsCleaned, file = "../data/cleaned_ELV_for_dim_reduction.Rdata")
 
 ```
 
@@ -152,7 +150,7 @@ par_analysis$nfact
 par_analysis$ncomp
 #Number of components with eigen values > eigen values of random data
 
-save(par_analysis, file = "output/parallel_analysis_results.Rdata")
+save(par_analysis, file = "../PCA_output/parallel_analysis_results.Rdata")
 ```
 
 

@@ -13,8 +13,11 @@ output:
     toc: yes
 ---
 
-# load data
-## effort task
+# Readme
+This script pulls cleaned data frrom effort task, post-test questionnaire, finger tapping motor test, and merges it all together.
+
+
+# load data for effort task
 before excluding any data! combining it all.
 ```{r}
 library(tidyverse)
@@ -74,7 +77,7 @@ sum(is.na(beh_wide_check$fun))
 sum(is.na(beh_wide_check$perceived_control))
 ```
 
-## are any kids missing finger-tapping data? n
+## are any kids missing finger-tapping data? 
 
 ```{r}
 sum(is.na(beh_wide_check$thumb_key_count))

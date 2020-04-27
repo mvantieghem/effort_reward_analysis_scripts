@@ -14,26 +14,15 @@ output:
     toc: yes
 ---
 
-```{r, include = F, warnings = F, echo=FALSE}
-library(tidyverse)
-library(lmerTest)
-library(ggplot2)
-library(effects)
-library(corrplot) # for pretty correlation plots 
-library(psycho) # for pretty correlation tables.
 
-# color scheme 
-my_colors <-  scale_color_manual(values=c("#0006CC", "#CC0000", "black", "black"))
-my_colors2 <- scale_fill_manual(values=c("#0006CC", "#CC0000","black", "black"))
-dark_blue = "#0006CC"
-dark_Red = "#CC0000"
+```{r, include = F, warning = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R", echo=F)
 ```
-
 
 # Load data 
 ```{r}
 # load all data with PCA added!
-load("data/all_pacct_effort_data_with_PCA.rda")
+load("../data/all_pacct_effort_data_with_PCA.rda")
 ```
 
 
@@ -45,7 +34,7 @@ nrow(beh_ECA_wide)
 sum(is.na(beh_ECA_wide$PC1))
 
 ECA_detailed_demo_table <- beh_ECA_wide %>%
-  filter(!is.na(PC1)) %>%
+  filter(!is.na(PC1) & !is.na(perceived_control)) %>%  # remove people with no PC data
   mutate(Recruitment_group = ifelse(Recruitment_group == "IFC" | Recruitment_group == "PI", "IA", Recruitment_group)) %>%
   group_by(Recruitment_group) %>%
   dplyr::summarize (N = n(), 
@@ -62,7 +51,7 @@ ECA_detailed_demo_table <- beh_ECA_wide %>%
              perc_below_poverty = round(sum(ifelse(Fam_inc_needs < 1, 1, 0), na.rm = T)/n(),2))
 stuff <- t(ECA_detailed_demo_table)
 stuff 
-write.csv(stuff, file = "tables/ECA_detailed_demo_table.csv", row.names = T)
+write.csv(stuff, file = "../tables/ECA_detailed_demo_table.csv", row.names = T)
 
 ```
 
@@ -72,7 +61,7 @@ write.csv(stuff, file = "tables/ECA_detailed_demo_table.csv", row.names = T)
 #beh_ECA_wide %>% filter(IQ < 70)
 
 ECA_beh_demo_table <- beh_ECA_wide %>%
-  filter(!is.na(PC1)) %>%
+  filter(!is.na(PC1) & !is.na(perceived_control)) %>% # remove people with no PC data or self-report data.
   dplyr::summarize (N = n(), 
              Prop_female = round(sum(SEX, na.rm = T)/n(),2),
              mean_age = round(mean(AGE, na.rm = T), 2),
@@ -86,12 +75,13 @@ ECA_beh_demo_table
 ## demo table for scan sample
 ```{r}
 ECA_scan_demo_table <- beh_scan_ECA_wide %>%
+  filter(!is.na(PC1) & !is.na(perceived_control)) %>% # remove people with no PC data or self-report data.
   dplyr::summarize (N = n(), 
-             Prop_female = round(sum(SEX.x, na.rm = T)/n(),2),
-             mean_age = round(mean(AGE.x, na.rm = T), 2),
-             sd_age = round(sd(AGE.x, na.rm = T), 2),
-             min_age = round(min(AGE.x, na.rm =T), 2),
-             max_age= round(max(AGE.x, na.rm = T),2))
+             Prop_female = round(sum(SEX, na.rm = T)/n(),2),
+             mean_age = round(mean(AGE, na.rm = T), 2),
+             sd_age = round(sd(AGE, na.rm = T), 2),
+             min_age = round(min(AGE, na.rm =T), 2),
+             max_age= round(max(AGE, na.rm = T),2))
 ECA_scan_demo_table
 ```
 
@@ -102,10 +92,10 @@ demo_table_pretty <- data.frame(t(rbind(ECA_beh_demo_table, ECA_scan_demo_table)
 names(demo_table_pretty) <- c("Behavior", "Scanning")
 #demo_table_pretty
 
-save(demo_table_pretty, file= "tables/Demo_ECA_behavior_and_scan.Rdata")
+save(demo_table_pretty, file= "../tables/Demo_ECA_behavior_and_scan.Rdata")
 wide_table <- t(demo_table_pretty) 
 wide_table 
-write.csv(wide_table, file = "tables/demo_table_pretty_wide_for_poster.csv")
+write.csv(wide_table, file = "../tables/demo_table_pretty_wide_for_poster.csv")
 
 ```
 
@@ -113,7 +103,7 @@ write.csv(wide_table, file = "tables/demo_table_pretty_wide_for_poster.csv")
 ```{r}
 age_hist <- ggplot(data = beh_ECA_wide, aes(x = AGE)) + 
   geom_histogram(bins = 12, fill = dark_blue, alpha = 0.5) + theme_classic() 
-#pdf("figures/manipulation_checks/ECA_age_hist.pdf", width = 8, height= 4)
+#pdf("../figures/manipulation_checks/ECA_age_hist.pdf", width = 8, height= 4)
 age_hist
 #dev.off()
 ```
@@ -148,6 +138,7 @@ check
 ```{r}
 #names(beh_ECA_wide)
 mean_table <- beh_ECA_wide %>% 
+    filter(!is.na(PC1) & !is.na(perceived_control)) %>%  # remove people with no PC data
   dplyr::summarize(perceived_reinforce = mean(as.numeric(as.character(perceived_reinforce)), na.rm = T), 
             perceived_control= mean(as.numeric(as.character(perceived_control)), na.rm = T), 
             perceived_effort_hard = mean(as.numeric(as.character(hard_effort_perceived)), na.rm = T), 
@@ -162,6 +153,7 @@ mean_table <- data.frame(t(mean_table))
 names(mean_table) <- "mean"
 
 sd_table <- beh_ECA_wide %>% 
+  filter(!is.na(PC1) & !is.na(perceived_control)) %>%  # remove people with no PC data
   dplyr::summarize(perceived_reinforce = sd(as.numeric(as.character(perceived_reinforce)), na.rm = T), 
             perceived_control= sd(as.numeric(as.character(perceived_control)), na.rm = T), 
             perceived_effort_hard = sd(as.numeric(as.character(hard_effort_perceived)), na.rm = T), 
@@ -177,10 +169,10 @@ names(sd_table) <- "sd"
 sd_table$variable <- rownames(sd_table) 
 
 post_test_table <- cbind(mean_table, sd_table) %>%
-  select(variable, mean, sd)
+  dplyr::select(variable, mean, sd)
 post_test_table
 
-save(post_test_table, file = "tables/post_test_self_report_descriptives.Rdata")
+save(post_test_table, file = "../tables/post_test_self_report_descriptives.Rdata")
 ```
 
 ## histograms of self-report data
@@ -188,7 +180,7 @@ save(post_test_table, file = "tables/post_test_self_report_descriptives.Rdata")
 ### perceived control
 ```{r}
 df <- beh_ECA_wide %>%
-  filter(!is.na(perceived_control)) %>%
+    filter(!is.na(PC1) & !is.na(perceived_control)) %>%  # remove people with no PC data
 group_by(perceived_control) %>%
   dplyr::summarize(counts = n())
 
@@ -200,7 +192,7 @@ pc_plot <- ggplot(df, aes(x = factor(perceived_control), y = counts)) +
 
 pc_plot
 
-pdf("figures/manipulation_checks/ECA_perceived_control_hist.pdf", width = 2.5, height= 4)
+pdf("../figures/manipulation_checks/ECA_perceived_control_hist.pdf", width = 2.5, height= 4)
 pc_plot
 dev.off()
 ```
@@ -208,7 +200,7 @@ dev.off()
 ### reinforcement rate... 
 ```{r}
 df <- beh_ECA_wide %>%
-  filter(!is.na(perceived_reinforce)) %>%
+    filter(!is.na(PC1) & !is.na(perceived_control)) %>%  # remove people with no PC data
 group_by(perceived_reinforce) %>%
   dplyr::summarize(counts = n())
 
@@ -220,7 +212,7 @@ pc_plot <- ggplot(df, aes(x = factor(perceived_reinforce), y = counts)) +
 
 pc_plot
 
-pdf("figures/manipulation_checks/ECA_perceived_reinforcement_hist.pdf", width = 3, height= 4)
+pdf("../figures/manipulation_checks/ECA_perceived_reinforcement_hist.pdf", width = 3, height= 4)
 pc_plot
 dev.off()
 
@@ -241,7 +233,7 @@ pc_plot <- ggplot(df, aes(x = factor(motivated), y = counts)) +
 
 pc_plot
 
-pdf("figures/manipulation_checks/ECA_motivated_hist.pdf", width = 3, height= 4)
+pdf("../figures/manipulation_checks/ECA_motivated_hist.pdf", width = 3, height= 4)
 pc_plot
 dev.off()
 
@@ -262,7 +254,7 @@ pc_plot <- ggplot(df, aes(x = factor(frustrated), y = counts)) +
 
 pc_plot
 
-pdf("figures/manipulation_checks/ECA_frustrated_hist.pdf", width = 3, height= 4)
+pdf("../figures/manipulation_checks/ECA_frustrated_hist.pdf", width = 3, height= 4)
 pc_plot
 dev.off()
 
@@ -283,7 +275,7 @@ pc_plot <- ggplot(df, aes(x = factor(win_feeling), y = counts)) +
 
 pc_plot
 
-pdf("figures/manipulation_checks/ECA_win_feeling_hist.pdf", width = 3, height= 4)
+pdf("../figures/manipulation_checks/ECA_win_feeling_hist.pdf", width = 3, height= 4)
 pc_plot
 dev.off()
 
@@ -304,7 +296,7 @@ pc_plot <- ggplot(df, aes(x = factor(lose_feeling), y = counts)) +
 
 pc_plot
 
-pdf("figures/manipulation_checks/ECA_lose_feeling_hist.pdf", width = 3, height= 4)
+pdf("../figures/manipulation_checks/ECA_lose_feeling_hist.pdf", width = 3, height= 4)
 pc_plot
 dev.off()
 
@@ -319,12 +311,12 @@ dev.off()
 #names(beh_ECA_wide)
 # perceived reinforcement is correlated with actual reinforcement.
 reinforce_vars <- beh_ECA_wide %>%
-  select(AGE, IQ, Reinforce_rate,  perceived_reinforce) 
+  dplyr::select(AGE, IQ, Reinforce_rate,  perceived_reinforce) 
 
 cor_table <- correlation(reinforce_vars)
 cor_table_reinforce <- summary(cor_table)
 cor_table_reinforce
-save(cor_table_reinforce, file = "tables/corr_table_perceived_vs_actual_reinforcement.Rdata")
+save(cor_table_reinforce, file = "../figures//corr_table_perceived_vs_actual_reinforcement.Rdata")
 
 reinforce_plot <- ggplot(data = beh_ECA_wide, aes(x = Reinforce_rate, y = perceived_reinforce)) + 
   geom_point(color = dark_blue, alpha = 0.3) + geom_smooth( method = "lm", color = dark_blue, fill = dark_blue) + 
@@ -332,7 +324,7 @@ reinforce_plot <- ggplot(data = beh_ECA_wide, aes(x = Reinforce_rate, y = percei
 
 reinforce_plot
 
-pdf("figures/manipulation_checks/corr_reinforce_plot.pdf", width = 4, height = 4)
+pdf("../figures/manipulation_checks/corr_reinforce_plot.pdf", width = 4, height = 4)
 reinforce_plot
 dev.off()
 ```
@@ -343,12 +335,12 @@ dev.off()
 ```{r}
 control <- beh_ECA_wide %>%
   filter(perceived_control <= 3) %>%
-  select(AGE, IQ, perceived_control, perceived_reinforce, frustrated, motivated, 
+  dplyr::select(AGE, IQ, perceived_control, perceived_reinforce, frustrated, motivated, 
          win_feeling, lose_feeling)
 cor_table <- correlation(control)
 cor_table_control <- summary(cor_table)
 cor_table_control
-save(cor_table_control, file = "tables/corr_table_motivation_perceived_control.Rdata")
+save(cor_table_control, file = "../tables/corr_table_motivation_perceived_control.Rdata")
 
 # this should actually be a bar graph!! 
 beh_ECA_wide <- beh_ECA_wide %>%
@@ -373,7 +365,7 @@ control_plot <- ggplot(data = effect_df,
 
 control_plot
 
-pdf("figures/manipulation_checks/corr_perceived_control_motivation.pdf", width = 2.5, height = 4)
+pdf("../figures/manipulation_checks/corr_perceived_control_motivation.pdf", width = 2.5, height = 4)
 control_plot
 dev.off()
 ```
@@ -381,23 +373,23 @@ dev.off()
 ### age isn't correlated with perceived effort, but is correlated with motor skills.
 ```{r}
 effort_vars <- beh_ECA_wide %>%
-  select(AGE, IQ, motor_skills_easy, motor_skills_hard, hard_effort_perceived, easy_effort_perceived) %>%
-  mutate(motor_skills_ave = (motor_skills_hard + motor_skills_easy)/2, 
+  dplyr::select(AGE, IQ, median_motor_RT_easy, median_motor_RT_hard, hard_effort_perceived, easy_effort_perceived) %>%
+  mutate(median_motor_RT__ave = (median_motor_RT_hard + median_motor_RT_easy)/2, 
         perceived_effort_ave = (hard_effort_perceived +easy_effort_perceived)/2)
 
 cor_table <- correlation(effort_vars)
 cor_table_motor <- summary(cor_table)
 cor_table_motor
-save(cor_table_motor, file = "tables/corr_table_motor_age_perceived_effort.Rdata")
+save(cor_table_motor, file = "../tables/corr_table_motor_age_perceived_effort.Rdata")
 
 
-motor_plot <- ggplot(data = beh_ECA_wide, aes(x = AGE, y = motor_skills_hard)) + 
+motor_plot <- ggplot(data = beh_ECA_wide, aes(x = AGE, y = median_motor_RT_hard)) + 
   geom_point(color = dark_blue, alpha = 0.3) + geom_smooth( method = "lm", color = dark_blue, fill = dark_blue) + 
   theme_classic() + ylab("Motor skills for hard task") + xlab ("Age (years)")
 
 motor_plot
 
-pdf("figures/manipulation_checks/corr_motor_age_plot.pdf", width = 4, height = 4)
+pdf("../figures/manipulation_checks/corr_motor_age_plot.pdf", width = 4, height = 4)
 motor_plot
 dev.off()
 ```
@@ -405,14 +397,14 @@ dev.off()
 ### perceived effort correlated with motor skills 
 ```{r}
 
-motor_plot <- ggplot(data = beh_ECA_wide, aes( y = motor_skills_hard, hard_effort_perceived)) + 
+motor_plot <- ggplot(data = beh_ECA_wide, aes( y = median_motor_RT_hard, hard_effort_perceived)) + 
   geom_jitter(color = dark_blue, alpha = 0.3, width = 0.1, height  = 0.1) +
   geom_smooth( method = "lm", color = dark_blue, fill = dark_blue) + 
   theme_classic() + xlab("Motor skills for hard task") + ylab ("Perceived effort on hard task")
 
 motor_plot
 
-pdf("figures/manipulation_checks/corr_motor_perceived_effort_plot.pdf", width = 4, height = 4)
+pdf("../figures/manipulation_checks/corr_motor_perceived_effort_plot.pdf", width = 4, height = 4)
 motor_plot
 dev.off()
 ```

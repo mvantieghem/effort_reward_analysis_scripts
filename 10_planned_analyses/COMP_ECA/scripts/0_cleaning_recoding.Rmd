@@ -25,19 +25,58 @@ PULLING RAW DATA FROM MASTER  & NEW TESI CODED SHEET \
 copied from danlab server on 10/29 \
 if you don't have server access this won't work! 
 
-## get variables from master.
+## checking master versions
 ```{r}
 pacct_master <- read_excel("../../../../subj_demo/masters/MASTER_20191118_updated_MICM.xlsx") 
+pacct_master1 <- read_excel("../../../../subj_demo/masters/MASTER_20200205.xlsx") 
+pacct_master2 <- read_excel("../../../../subj_demo/masters/MASTER_W1_20200309.xlsx")
+
 
 TESI_vars <- names(pacct_master)[grepl("TESI", names(pacct_master)) & grepl("CG", names(pacct_master)) 
                     & !grepl("NCG", names(pacct_master)) & !grepl("EARLY", names(pacct_master)) 
                     & !grepl("LATE", names(pacct_master)) & !grepl("ADV", names(pacct_master))]
 
 pacct <- pacct_master %>%
-        select(IDENT_SUBID, GROUP, DEM_3_GENDER_CHILD,
+        dplyr::select(IDENT_SUBID, GROUP, DEM_3_GENDER_CHILD,
          MICM_LOS, MICM_FTP, MICM_EMON, MICM_DV, MICM_EMOA_WO_DV, MICM_PHYSA,MICM_SEXA,
          KSADS_PTSD_J, KSADS_PTSD_K, KSADS_PTSD_L, CGH_SUM_SWITCH, TESI_vars)
 
+pacct1 <- pacct_master1 %>%
+        dplyr::select(IDENT_SUBID, GROUP, DEM_3_GENDER_CHILD,
+         MICM_LOS, MICM_FTP, MICM_EMON, MICM_DV, MICM_EMOA_WO_DV, MICM_PHYSA,MICM_SEXA,
+         KSADS_PTSD_J, KSADS_PTSD_K, KSADS_PTSD_L, CGH_SUM_SWITCH, TESI_vars)
+
+
+pacct2 <- pacct_master2 %>%
+        dplyr::select(IDENT_SUBID, GROUP, DEM_3_GENDER_CHILD,
+         MICM_LOS, MICM_FTP, MICM_EMON, MICM_DV, MICM_EMOA_WO_DV, MICM_PHYSA,MICM_SEXA,
+         KSADS_PTSD_J, KSADS_PTSD_K, KSADS_PTSD_L, CGH_SUM_SWITCH, TESI_vars)
+
+
+compare1 <- merge(pacct, pacct1, by = "IDENT_SUBID", all = T)
+compare2 <- merge(compare1, pacct2, by = "IDENT_SUBID", all = T) %>%
+  dplyr::select(IDENT_SUBID, GROUP.x, GROUP.y, GROUP) %>%
+  mutate(set1changed = ifelse(GROUP.x == GROUP.y, 0, 1), 
+         set2changed = ifelse(GROUP == GROUP.y, 0, 1))
+
+summary(as.factor(compare2$GROUP.x)) # november
+summary(as.factor(compare2$GROUP.y)) # feb 
+summary(as.factor(compare2$GROUP)) # march
+
+# NAs changed to a group between nov and feb
+summary(as.factor(compare2$GROUP.y)) - summary(as.factor(compare2$GROUP.x))
+# NA changed to C between feb and march.
+summary(as.factor(compare2$GROUP)) - summary(as.factor(compare2$GROUP.y))
+
+```
+
+# moving forward with new master, but fixing it
+```{r}
+#duplicate/ weird subjects.
+list_wrong <- c("PA330_V1W2_V1", "PA332_V1W2_V1", "PA336_V1W2_V1", "PA340_V1W2_V1", "PA232_V1W2_V1")
+pacct <- pacct2 %>%
+  filter(! IDENT_SUBID %in% list_wrong)
+nrow(pacct)
 ```
 
 # cleaning 
@@ -46,7 +85,7 @@ pacct <- pacct_master %>%
 ```{r}
 # get data dictionary with better labels for each variable name
 dictionary <- readxl::read_excel('../../../../../PACCT-CMI-Hackathon/rawData/variableLabels/PACCT_DATA_DICTIONARY_10.25.19.xlsx') %>%
-  select(Variable_Name, Variable_Label) %>%
+  dplyr::select(Variable_Name, Variable_Label) %>%
   filter(Variable_Name %in% names(pacct)[grepl("TESI", names(pacct))])
 
 # replacing numbered TESI variable names with better names from data dictionary
@@ -57,7 +96,7 @@ not_including <- TESI_pacct_names[! TESI_pacct_names %in% dictionary$Variable_Na
 
 # get rid of them for now. 
 pacct <- pacct %>%
-  select(-not_including)
+  dplyr::select(-not_including)
 
 # have a systematic way to change variables, make sure matching up correctly.
 for (variable in TESI_pacct_names){
@@ -65,7 +104,7 @@ for (variable in TESI_pacct_names){
     # save the matching label
     new_label <- dictionary %>%
       filter(Variable_Name == variable) %>%
-      select(Variable_Label) %>%
+      dplyr::select(Variable_Label) %>%
       as.character()
     # change the column name to the new label in the master.
     names(pacct)[names(pacct) == variable] <- new_label 
@@ -117,7 +156,7 @@ var_cor <- pacct_cleaned %>%
 corrplot(var_cor$r, method = "color", type = "lower")
 
 # save
-pdf("figures/PCA/Caregiving_adversity_variables_corrplot.pdf")
+pdf("../figures/PCA/Caregiving_adversity_variables_corrplot.pdf")
 corrplot(var_cor$r, method = "color", type = "lower")
 dev.off()
 
@@ -142,8 +181,8 @@ PA_cor$r
 MICM and KSADS highly correlated, TESI not as much
 ```{r, echo = F}
 SA_cor <- pacct_cleaned %>%
-  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
-  select(contains("_SA"), contains("SEXA")) %>%
+  dplyr::select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  dplyr::select(contains("_SA"), contains("SEXA")) %>%
   as.matrix() %>% # convert to matrix
   rcorr()  #calculate correlations 
 
@@ -154,8 +193,8 @@ SA_cor$r
 MICM and KSADS highly correlated, TESI not as much.
 ```{r, echo = F}
 DV_cor <- pacct_cleaned %>%
-  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
-  select(contains("DV"), -contains("WO")) %>%
+  dplyr::select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  dplyr::select(contains("DV"), -contains("WO")) %>%
   as.matrix() %>% # convert to matrix
   rcorr()  #calculate correlations 
 
@@ -166,8 +205,8 @@ DV_cor$r
 REALLY not correlated between TESI and MICM 
 ```{r, echo = F}
 EMOA_cor <- pacct_cleaned %>%
-  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
-  select(contains("EMOA")) %>%
+  dplyr::select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  dplyr::select(contains("EMOA")) %>%
   as.matrix() %>% # convert to matrix
   rcorr()  #calculate correlations 
 
@@ -180,8 +219,8 @@ looked at this subset of variables because based on corrplot, they looked correl
 ```{r, echo = F}
 
 Neg_cor <- pacct_cleaned %>%
-  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
-  select(contains("LOS"), contains("NEGLECT"), contains("FTP"), CGH_SUM_SWITCH) %>%
+  dplyr::select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% # remove labels
+  dplyr::select(contains("LOS"), contains("NEGLECT"), contains("FTP"), CGH_SUM_SWITCH) %>%
   as.matrix() %>% # convert to matrix
   rcorr()  #calculate correlations 
 
@@ -199,16 +238,16 @@ any(var_cor$r > 0.8 & var_cor$r < 1.0)
 
 # make changes to the data 
 pacct_cleaned <- pacct_cleaned %>%
-  select( -MICM_DV, -KSADS_PTSD_PA)  %>% 
+  dplyr::select( -MICM_DV, -KSADS_PTSD_PA)  %>% 
   mutate(TESI_SEXABUSE_CG = ifelse(TESI_SEXABUSE_CG == 1, 1, 
                                 ifelse(TESI_SEXABUSE_WITNESS_CG == 1, 1, 0)), 
          TESI_FAMDV_CG = ifelse(TESI_FAMDV_CG == 1, 1, 
                                 ifelse(TESI_FAMDVTHREAT_CG == 1, 1, 0))) %>%
-  select(-TESI_SEXABUSE_WITNESS_CG, -TESI_FAMDVTHREAT_CG)
+  dplyr::select(-TESI_SEXABUSE_WITNESS_CG, -TESI_FAMDVTHREAT_CG)
 
 # set up matrix for correlations
 var_cor2 <- pacct_cleaned %>%
-  select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% 
+  dplyr::select(-IDENT_SUBID, -GROUP, -DEM_3_GENDER_CHILD) %>% 
   as.matrix() %>% # convert to matrix
   rcorr() # calculate correlations
 
@@ -222,5 +261,5 @@ SAVE DATA.
 ```{r}
 
 # save
-save(pacct_cleaned, file = "data/pacct_all_cleaned_ELV.Rdata")
+save(pacct_cleaned, file = "../data/pacct_all_cleaned_ELV.Rdata")
 ```

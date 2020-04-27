@@ -40,7 +40,7 @@ load("../../../9_combine_brain_beh_data/cleaned_data/COMP_ECA/all_pacct_effort_d
 
 ## add most updated cruitment group designations from october 2019
 ```{r}
-master <- read_excel("../../../../subj_demo/masters/MASTER_20191118_updated_MICM.xlsx") 
+master <- read_excel("../../../../subj_demo/masters/MASTER_W1_20200309.xlsx") 
 
 demo <- master %>%
   dplyr::select(IDENT_SUBID, GROUP) %>%
@@ -52,7 +52,7 @@ demo <- master %>%
 check missing data, because PCA scores noto available for some subjects
 ```{r}
 #load('model_results/PCA/bootstrapPCASubjectLoadings.Rdata') # not using bootstrappeds cores for now.
-load("output/pcaFullSampleScoresWithLabels.rda")
+load("../PCA_output/pcaFullSampleScoresWithLabels.rda")
 
 nrow(pacctPCAscores) 
 names(pacctPCAscores)
@@ -142,7 +142,7 @@ beh_scan_ECA_long_WSLS <- merge(beh_scan_ECA_long_WSLS, PCA_scores, by = "SUBJEC
 ## save all of it as rda file!! 
 save(beh_ECA_wide, beh_ECA_wide_WSLS, beh_ECA_long, beh_ECA_long_WSLS, 
      beh_scan_ECA_wide, beh_scan_ECA_wide_WSLS, beh_scan_ECA_long, beh_scan_ECA_long_WSLS, 
-     file = "data/all_pacct_effort_data_with_PCA.rda")
+     file = "../data/all_pacct_effort_data_with_PCA.rda")
 ```
 
 

@@ -26,7 +26,7 @@ source("../../../0_R_analysis_setup_file.R")
 
 ```{r}
 # load all data with PCA added!
-load("data/all_pacct_effort_data_with_PCA.rda")
+load("../data/all_pacct_effort_data_with_PCA.rda")
 
 ```
 
@@ -41,7 +41,8 @@ perceived_df <- beh_scan_ECA_wide %>%
                                       "Hard", "Easy"))) %>%
       mutate( motor_speed_by_condition = ifelse(condition == "Easy", median_motor_RT_easy, median_motor_RT_hard), 
               diff_pos_affect = win_feeling - lose_feeling, 
-             GROUP_ECA = as.factor(GROUP_ECA))
+             GROUP_ECA = as.factor(GROUP_ECA)) %>%
+  filter(!is.na(perceived_effort_rating))
 ```
 
 
@@ -65,32 +66,56 @@ cor.test(beh_scan_ECA_wide$perceived_effort_ave, beh_scan_ECA_wide$median_motor_
 
 ```
 
-# ECA effects on perceived effort: 
+#  perceived effort: 
+
+## checking distributions
+```{r}
+qqPlot(perceived_df$perceived_effort_rating, "norm")
+qqPlot(perceived_df$perceived_effort_rating, "lnorm") # no
+poisson <- fitdistr( perceived_df$perceived_effort_rating, "Poisson")
+qqPlot(perceived_df$perceived_effort_rating, "pois", lambda =poisson$estimate)
+```
+
+## COMP main effects of condition.
+```{r}
+perceived_effort_mod_g <- glmer(perceived_effort_rating ~ condition + AGE.c + SEX.c + 
+                            # Reinforce_rate.c + motor_speed_by_condition + 
+                              # diff_pos_affect + perceived_reinforce + perceived_control +
+                               (1 | SUBJECTID), 
+                             family = "poisson",
+                           data = filter(perceived_df, GROUP_ECA == "COMP"))
+summary(perceived_effort_mod_g)
+
+
+```
 
 ## ECA group effects 
 main effect SIG, no interaction with condition or age
 including/not including these covariates does not make a difference! 
 ```{r}
-perceived_effort_mod_g <- lmer(perceived_effort_rating ~ condition + GROUP_ECA + AGE.c + SEX.c + 
+perceived_effort_mod_g <- glmer(perceived_effort_rating ~ condition + GROUP_ECA + AGE.c + SEX.c + 
                              #Reinforce_rate.c + motor_speed_by_condition + 
                               # diff_pos_affect + perceived_reinforce + perceived_control +
                                (1 | SUBJECTID), 
+                             family = "poisson",
                            data = perceived_df)
 summary(perceived_effort_mod_g)
 
 
-perceived_effort_mod_cxg <- lmer(perceived_effort_rating ~ condition *GROUP_ECA + AGE.c + SEX.c +  
+perceived_effort_mod_cxg <- glmer(perceived_effort_rating ~ condition *GROUP_ECA + AGE.c + SEX.c +  
                             # Reinforce_rate.c +  motor_speed_by_condition + 
                              #  diff_pos_affect + perceived_reinforce + perceived_control +
                                (1 | SUBJECTID), 
+                            family = "poisson",
                            data = perceived_df)
 summary(perceived_effort_mod_cxg)
 
 
-perceived_effort_mod_gxa <- lmer(perceived_effort_rating ~ condition + GROUP_ECA*AGE.c + SEX.c +  
+perceived_effort_mod_gxa <- glmer(perceived_effort_rating ~ condition + GROUP_ECA*AGE.c + SEX.c +  
                                #     Reinforce_rate.c +  motor_speed_by_condition + 
                               # diff_pos_affect + perceived_reinforce + perceived_control +
                                (1 | SUBJECTID), 
+                                family = "poisson",
                            data = perceived_df)
 summary(perceived_effort_mod_gxa)
 ```
@@ -111,7 +136,7 @@ plot_effect <- ggplot(effort_effect,aes(x = condition, y = fit)) +
   xlab ("condition") + theme(legend.position = "none") 
 plot_effect
 
-ggsave(plot_effect, file = "figures/perceived_effort/perceived_effort_by_condition.png", width = 2.5, height = 4)
+ggsave(plot_effect, file = "../figures/self_report/perceived_effort_by_condition.png", width = 6, height = 4)
 
 ```
 
@@ -130,16 +155,17 @@ plot_effect <- ggplot(effort_effect,aes(x = GROUP_ECA, y = fit)) +
   xlab ("GROUP") + theme(legend.position = "none") + facet_grid(~condition)
 plot_effect
 
-ggsave(plot_effect, file = "figures/perceived_effort/perceived_effort_by_GROUP.png", width = 4, height = 4)
+ggsave(plot_effect, file = "../figures/perceived_effort/perceived_effort_by_GROUP.png", width = 4, height = 4)
 
 ```
 
 
 ## condition x age effects: TREND
 ```{r}
-perceived_effort_mod_cxa <- lmer(perceived_effort_rating ~ condition*AGE.c + GROUP_ECA + SEX.c +
+perceived_effort_mod_cxa <- glmer(perceived_effort_rating ~ condition*AGE.c + GROUP_ECA + SEX.c +
                                     Reinforce_rate.c +  motor_speed_by_condition + 
                                (1 | SUBJECTID), 
+                               family = "poisson",
                            data = perceived_df)
 summary(perceived_effort_mod_cxa)
 ```
@@ -159,17 +185,18 @@ plot_effect <- ggplot(effort_effect,aes(x = AGE.c, y = fit)) +
   xlab ("Cumulative ECA Score") + theme(legend.position = "none") + facet_grid(~condition)
 plot_effect
 
-ggsave(plot_effect, file = "figures/perceived_effort/perceived_effort_by_ageXcondition.png", width = 6, height = 4)
+ggsave(plot_effect, file = "../figures/perceived_effort/perceived_effort_by_ageXcondition.png", width = 6, height = 4)
 ```
 
 
 # cumulative ECA effects
 main effect, no interaction with condition.
 ```{r}
-perceived_effort_mod_PC1 <- lmer(perceived_effort_rating ~ condition + PC1_log + AGE.c + SEX.c + 
+perceived_effort_mod_PC1 <- glmer(perceived_effort_rating ~ condition + PC1_log + AGE.c + SEX.c + 
                              # Reinforce_rate.c +  motor_speed_by_condition +
                               # diff_pos_affect + perceived_reinforce + perceived_control +
                                (1 | SUBJECTID), 
+                                family = "poisson",
                            data = perceived_df)
 summary(perceived_effort_mod_PC1)
 
@@ -207,7 +234,7 @@ plot_effect <- ggplot(effort_effect,aes(x = PC1_log, y = fit)) +
   xlab ("Cumulative ECA Score") + theme(legend.position = "none") + facet_grid(~condition)
 plot_effect
 
-ggsave(plot_effect, file = "figures/perceived_effort/perceived_effort_by_PC1_log.png", width = 6, height = 4)
+ggsave(plot_effect, file = "../figures/perceived_effort/perceived_effort_by_PC1_log.png", width = 6, height = 4)
 ```
 
 

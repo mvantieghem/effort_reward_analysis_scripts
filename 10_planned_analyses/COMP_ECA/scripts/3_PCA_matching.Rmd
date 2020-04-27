@@ -6,6 +6,7 @@ output:
   pdf_document: default
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -14,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 # Load in PCA fit to the full sample/extract loadings
-load(file="output/pcaFullSample.rda")
+load(file="../PCA_output/pcaFullSample.rda")
 loadings<-pcaFullSample[[2]]
 
 # Set number of PCs to match (10)
@@ -27,7 +28,7 @@ pca_matching_eig <-list()
 pca_matching_preds <-list()
 
 # Load in the the bootstrapped PCAs 
-load(file = 'output/pcaBootstrap.rda')
+load(file = '../PCA_output/pcaBootstrap.rda')
 ```
 
 # Run PCA Matching Algorithm
@@ -70,5 +71,5 @@ for (k in 1:nrow(bootFrame)){
   pca_matching_preds[[k]] = reorg_boot_preds
 }
 
-save(pca_matching_loadings, pca_matching_eig, pca_matching_preds,file="output/matched_pca.rda")
+save(pca_matching_loadings, pca_matching_eig, pca_matching_preds,file="../PCA_output/matched_pca.rda")
 ```

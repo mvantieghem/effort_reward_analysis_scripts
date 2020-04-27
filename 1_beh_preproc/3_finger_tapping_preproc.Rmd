@@ -13,11 +13,11 @@ output:
     toc: yes
 ---
 
+# Readme
+This script loads files from the finger tapping (motor speed) task, adminstered in psychopy, and creates a clean database that includes all subjects. 
 
-# Notes
-updating Nov 26, 2019 to make sure version is indicated as ft_version 
-
-# load in cleaned behavior task data, so we know which subjects to pull data from
+# load in cleaned behavior task data
+so we know which subjects to pull finger-tapping-test data from
 ```{r}
 library(tidyverse)
 library(eply)
@@ -52,7 +52,7 @@ save(ft.data.list, file = "../../behavioral_data/1_finger_tapping_data/compiled/
 check <- ft.data.list[[200]]
 ```
 
-# loop through to clean data.
+# loop through each file to clean data.
 ```{r}
 cumulative_data <- data.frame()
 for (m in 1:length(ft.data.list)){
@@ -145,55 +145,17 @@ finger_tapping_df <- cumulative_data
 names(finger_tapping_df)
 # there are several duplicates.
 identical(nrow(finger_tapping_df), length(unique(finger_tapping_df$IDENT_SUBID)))
-
+# find theh duplicates... 
 list_duplicates <- which(duplicated(finger_tapping_df[,1]),)
 # now remove them to fix! 
 finger_tapping_df <- finger_tapping_df[-c(list_duplicates),]
 identical(nrow(finger_tapping_df), length(unique(finger_tapping_df$IDENT_SUBID)))
+
+```
+
+# save file 
+```{r}
 save(finger_tapping_df, file = paste0("../../behavioral_data/1_finger_tapping_data/compiled/compiled_cleaned_finger_tapping_data.Rdata"))
 
-```
-
-
-# sanity checks
-## distribution of data looks reasonable
-```{r}
-hist(finger_tapping_df$thumb_key_count)
-hist(finger_tapping_df$ring_key_count)
-hist(finger_tapping_df$mean_RT_ring)
-hist(finger_tapping_df$mean_RT_thumb)
-hist(finger_tapping_df$median_RT_thumb)
-hist(finger_tapping_df$median_RT_ring)
-```
-
-## is median RT for ring > thumb? nope.
-```{r}
-ft_long_df <- finger_tapping_df %>%
-  gather(finger, median_RT, median_RT_thumb, median_RT_ring) %>%
-  mutate(finger = ifelse(finger == "median_RT_thumb", "thumb", "ring"))
-ft_long_df
-
-t.test(median_RT ~ finger, data = ft_long_df)
-```
-
-## is median RT for ring > thumb?
-```{r}
-ft_long_df <- finger_tapping_df %>%
-  gather(finger, median_RT, median_RT_thumb, median_RT_ring) %>%
-  mutate(finger = ifelse(finger == "median_RT_thumb", "thumb", "ring"))
-ft_long_df
-
-t.test(median_RT ~ finger, data = ft_long_df)
-```
-
-
-## is number of button presses thumb > ring?
-```{r}
-ft_long_df <- finger_tapping_df %>%
-  gather(finger, number_pressed, thumb_key_count, ring_key_count) %>%
-  mutate(finger = ifelse(finger == "thumb_key_count", "thumb", "ring"))
-ft_long_df
-
-t.test(number_pressed ~ finger, data = ft_long_df)
 ```
 

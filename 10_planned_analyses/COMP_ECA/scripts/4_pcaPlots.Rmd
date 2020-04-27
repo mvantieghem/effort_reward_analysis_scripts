@@ -5,27 +5,23 @@ date: "September 10, 2019"
 output:
   html_document:
     df_print: paged
-  pdf_document: default
+  png_document: default
 ---
 
 # notes 
 PCA thing said to look at 2 dimensions and 3 factors 
 
-```{r chunk1, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
-library(ggplot2)
-library(viridis)
-library(readxl)
-library(corrplot)
+
+```{r, include = F, warnings = F, echo=FALSE, message = F}
+source("../../../0_R_analysis_setup_file.R")
 ```
 
 # get data organized
 ## Load in model and pacct raw data (clean same way as orig bootstrap PCA script)
 ```{r effortdata}
-load('data/pacct_effort_w_labels.Rdata') # labeled data
+load('../PCA_output/pcaFullSampleModel.rda') # full sample model output
 
-load('output/pcaFullSampleModel.rda') # full sample model output
+load("../data/pacct_effort_w_labels.Rdata")
 ```
 
 ## Load in Raw CBCL through master
@@ -54,8 +50,8 @@ summary(as.factor(pacct_effort_w_labels$GROUP))
 
 ## Prep bootstrap matching for plots
 ```{r prep}
-load('output/matched_pca.rda')
-load('output/pcaFullSample.rda')
+load('../PCA_output/matched_pca.rda')
+load('../PCA_output/pcaFullSample.rda')
 
 fullSampLoadings = data.frame(pcaFullSample[[2]])
 fullSampLoadings$vars = row.names(fullSampLoadings)
@@ -110,14 +106,14 @@ loadingBootMatchPlot =
   labs(title = 'Boostrap (w/matching) Distributions of Variable loadings on PC 1-3\nBlue points are loadings from PCA fit to full sample', y = 'Abs. Value Loading')
 
 loadingBootMatchPlot
-ggsave(loadingBootMatchPlot, height = 8, width = 12, file = 'figures/PCA/pcaLoadingBootMatchPlot.pdf')
+ggsave(loadingBootMatchPlot, height = 8, width = 12, file = '../figures/PCA/pcaLoadingBootMatchPlot.png')
 
 # Also save out bootstrap matching loadings for the 2-way clustering
 bootMatchLoadingsFor2WayClust = bootMatchSummary %>%
   dplyr::select(., vars, dimension, meanLoad) %>%
   tidyr::spread(key = dimension, value = meanLoad)
 
-save(bootMatchLoadingsFor2WayClust, file = 'output/bootstrapLoadingMeans.rda')
+save(bootMatchLoadingsFor2WayClust, file = '../PCA_output/bootstrapLoadingMeans.rda')
 
 ```
 
@@ -126,7 +122,7 @@ save(bootMatchLoadingsFor2WayClust, file = 'output/bootstrapLoadingMeans.rda')
 ## Run permutation test to threshold raw loadings (how stable?)
 ```{r permutationtest}
 # get the original PCA input data.
-load("data/cleaned_ELV_for_dim_reduction.Rdata")
+load("../data/cleaned_ELV_for_dim_reduction.Rdata")
 
 # make a null distribution to compare our correrlatins with
 nPerms = 1000
@@ -142,7 +138,7 @@ hist(abs(corVec))
 boundary = quantile(abs(corVec), prob = .99)
 
 # load the rraw loadings 
-load('output/pcaFullLoadingsNotAbsVal.rda')
+load('../PCA_output/pcaFullLoadingsNotAbsVal.rda')
 regularLoadings = mutate(regularLoadings, dimension = parse_number(dimensions)) %>%
   select(-dimensions) %>%
   left_join(., bootMatchSummary, by = c('vars', 'dimension')) %>%
@@ -167,7 +163,7 @@ loadingsNoAbsValPlot = ggplot(regularLoadings, aes(x = vars, y = loading, color 
 
 loadingsNoAbsValPlot
 
-ggsave(loadingsNoAbsValPlot, height = 8, width = 12, file = 'figures/PCA/pcaLoadingFullNotAbsoluteValued.pdf')
+ggsave(loadingsNoAbsValPlot, height = 8, width = 12, file = '../figures/PCA/pcaLoadingFullNotAbsoluteValued.png')
 ```
 
 # Subject Scores (predictions) of PCs
@@ -192,7 +188,7 @@ for (i in 1:length(pca_matching_preds)){
 
 
 # load in key and orig scores
-load('output/pcaFullScoresKey.rda')
+load('../PCA_output/pcaFullScoresKey.rda')
 
 pcaFullScores$subject = as.numeric(pcaFullScores$subject)
 max(bootMatchPreds$subject)
@@ -224,7 +220,7 @@ bootMatchPredsFirst5Cor = dplyr::select(bootMatchPredSummary, contains('boot'), 
 bootstrapPCASubjectLoadings = bootMatchPredSummary %>%
   dplyr::select(contains('Boot'), GROUP, Sex, IDENT_SUBID)
 
-write.csv(bootstrapPCASubjectLoadings, file = 'output/bootstrapPCASubjectLoadings.csv', row.names = FALSE)
+write.csv(bootstrapPCASubjectLoadings, file = '../PCA_output/bootstrapPCASubjectLoadings.csv', row.names = FALSE)
 
 ```
 
@@ -245,8 +241,8 @@ comparingSubjectScoresDim2 <- ggplot(bootMatchPredSummary, aes(x = dimBoot2, y =
 comparingSubjectScoresDim1
 comparingSubjectScoresDim2
 
-ggsave(comparingSubjectScoresDim1, file = "figures/PCA/comparingSubjectScoresDim1.pdf")
-ggsave(comparingSubjectScoresDim2, file = "figures/PCA/comparingSubjectScoresDim2.pdf")
+ggsave(comparingSubjectScoresDim1, file = "../figures/PCA/comparingSubjectScoresDim1.png")
+ggsave(comparingSubjectScoresDim2, file = "../figures/PCA/comparingSubjectScoresDim2.png")
 
 ```
 
@@ -271,9 +267,9 @@ fullSampGroupPC1_2
 fullSampGroupPC1_3
 fullSampGroupPC2_3
 
-ggsave(fullSampGroupPC1_2, file = 'figures/PCA/pcProjection_1_2_group.pdf')
-ggsave(fullSampGroupPC1_3, file = 'figures/PCA/pcProjection_1_3_group.pdf')
-ggsave(fullSampGroupPC2_3, file = 'figures/PCA/pcProjection_2_3_group.pdf')
+ggsave(fullSampGroupPC1_2, file = '../figures/PCA/pcProjection_1_2_group.png')
+ggsave(fullSampGroupPC1_3, file = '../figures/PCA/pcProjection_1_3_group.png')
+ggsave(fullSampGroupPC2_3, file = '../figures/PCA/pcProjection_2_3_group.png')
 
 ```
 
@@ -292,8 +288,8 @@ bootGroupPC1_2
 bootGroupPC1_3 
 
 
-ggsave(bootGroupPC1_2, file = 'figures/PCA/pcProjectionBootstrapMean_1_2_group.pdf')
-ggsave(bootGroupPC1_3, file = 'figures/PCA/pcProjectionBoostrapMean_1_3_group.pdf')
+ggsave(bootGroupPC1_2, file = '../figures/PCA/pcProjectionBootstrapMean_1_2_group.png')
+ggsave(bootGroupPC1_3, file = '../figures/PCA/pcProjectionBoostrapMean_1_3_group.png')
 ```
 
 
@@ -314,7 +310,7 @@ cbclPC1 = ggplot(filter(pacctPCAScoresLong, dimNum < 2),
 
 cbclPC1
 
-ggsave(cbclPC1, file = 'figures/PCA/pcdim1_fullsample_cbcl.pdf', height = 6, width = 8)
+ggsave(cbclPC1, file = '../figures/PCA/pcdim1_fullsample_cbcl.png', height = 6, width = 8)
 
 ```
 
@@ -334,7 +330,7 @@ cbclPC1 = ggplot(filter(bootMatchPredSummaryLong, dimNum < 2),
 
 cbclPC1
 
-ggsave(cbclPC1, file = 'figures/PCA/pcdim1_boot_cbcl.pdf', height = 6, width = 8)
+ggsave(cbclPC1, file = '../figures/PCA/pcdim1_boot_cbcl.png', height = 6, width = 8)
 
 ```
 
@@ -411,9 +407,9 @@ screeEig
 screeProp
 screeCumulative
 
-ggsave(screeEig, file = 'figures/PCA/screeEigenvaluesPCA_MatchBoostrap.png')
-ggsave(screeProp, file = 'figures/PCA/screePropVariancePCA_MatchBoostrap.png')
-ggsave(screeCumulative, file = 'figures/PCA/screeCumulativeVariancePCA_MatchBoostrap.png')
+ggsave(screeEig, file = '../figures/PCA/screeEigenvaluesPCA_MatchBoostrap.png')
+ggsave(screeProp, file = '../figures/PCA/screePropVariancePCA_MatchBoostrap.png')
+ggsave(screeCumulative, file = '../figures/PCA/screeCumulativeVariancePCA_MatchBoostrap.png')
 
 ```
 
@@ -431,6 +427,6 @@ bootMatchPredSummary2 <- bootMatchPredSummary %>%
 nrow(bootMatchPredSummary2)
 pacctPCAscores <- left_join(pacctPCAScores2, bootMatchPredSummary2)
 
-save(pacctPCAscores, file= "output/pcaFullSampleScoresWithLabels.rda")
+save(pacctPCAscores, file= "../PCA_output/pcaFullSampleScoresWithLabels.rda")
 
 ```

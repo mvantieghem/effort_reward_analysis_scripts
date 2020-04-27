@@ -26,7 +26,7 @@ library(PCAmixdata)
 # Load in cleaned & standardized & unlabeled data.data
 
 ```{r}
-load("data/cleaned_ELV_for_dim_reduction.Rdata")
+load("../data/cleaned_ELV_for_dim_reduction.Rdata")
 ```
 
 # Bootstrap the PCA
@@ -63,7 +63,7 @@ for (i in 1:nBoots){
 }
 
 
-save(bootFrame, file = 'output/pcaBootstrap.rda')
+save(bootFrame, file = '../PCA_output/pcaBootstrap.rda')
 ```
 
 # PCA on full sample as 'template'
@@ -72,21 +72,21 @@ save(bootFrame, file = 'output/pcaBootstrap.rda')
 pcaFull = PCAmix(pacctNoLabelsCleaned, graph = FALSE, ndim = ncol(pacctNoLabelsCleaned))
 pcaFullSample = list(pcaFull$eig, abs(pcaFull$quanti$coord))
 
-save(pcaFull, file = 'output/pcaFullSampleModel.rda')
-save(pcaFullSample, file = 'output/pcaFullSample.rda')
+save(pcaFull, file = '../PCA_output/pcaFullSampleModel.rda')
+save(pcaFullSample, file = '../PCA_output/pcaFullSample.rda')
 
 # create a *key* linking subject numbers in the model with PACCT subject numbers
 pcaFullScores = data.frame(pcaFull$scores)
 pcaFullScores$subject= row.names(pcaFullScores)
 
 # add SUBIDS from original labeled data
-load("data/pacct_effort_w_labels.Rdata")
+load("../data/pacct_effort_w_labels.Rdata")
 # first confirm that identical dataset lengths
 identical(nrow(pcaFullScores), nrow(pacct_effort_w_labels))
 # now add the subids to the pca output 
 pcaFullScores$IDENT_SUBID = pacct_effort_w_labels$IDENT_SUBID
 
-save(pcaFullScores, file = 'output/pcaFullScoresKey.rda')
+save(pcaFullScores, file = '../PCA_output/pcaFullScoresKey.rda')
 ```
 
 
@@ -114,7 +114,7 @@ regularLoadings = pcaFull$quanti$coord[, 1:5] %>%
   mutate(., vars = row.names(.)) %>%
   tidyr::gather(., key = 'dimensions', value = 'loading', contains('dim'))
 
-save(regularLoadings, file = 'output/pcaFullLoadingsNotAbsVal.rda')
+save(regularLoadings, file = '../PCA_output/pcaFullLoadingsNotAbsVal.rda')
 
 ggplot(regularLoadings, aes(x = vars, y = loading)) +
   geom_hline(yintercept = 0) +

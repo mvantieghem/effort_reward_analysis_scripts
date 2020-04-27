@@ -13,12 +13,15 @@ output:
     toc: yes
 ---
 
-# notes
+
+# Readme
+This script loads files from the effort reward task, adminstered in psychopy (either fMRI scannner or on computer), and creates a clean database that includes all subjects. 
+
+# LOG
  updated on Jan 29, 2019 to calculate % actual reinforcement per subject for pos vs neg \
 updated on March 25, 2019 to include ALL DATA COLLECTED EVER \
  updated April 3, 2019 to make sure reinforcement rate is based on only effort trials that were successful! \
 updated November 26, 2019 to record version of task (inside or out of scanner) based on naming of file \
-this is an imperfect measure, but better than nothing. \
 updated on Dec 16, 2019 to include button press counts and RT.
 
 ```{r}

@@ -1,5 +1,7 @@
 #analysis set up files
 library(kableExtra) # for pretty tables
+library(car)
+library(MASS)
 library(tidyverse) # data cleaning
 library(lmerTest) # linear mixed effects models
 library(brms) # bayesian model
@@ -26,10 +28,11 @@ library(cowplot) # Required for sim_slopes
 library(boot) # Required for bootstrapping CIs in mediation analysis
 library(lavaan) # Required for mediation analyses
 library(apaTables)
-library(mediation) # for mediation analyses 
+#library(mediation) # for mediation analyses 
 library(purrr) # for code from Dani Cosme for sensitivity analyses
 library(cowplot)# for code from Dani Cosme for sensitivity analysis 
 
+library(viridis)
 # Seed for random number generation
 set.seed(1234)
 

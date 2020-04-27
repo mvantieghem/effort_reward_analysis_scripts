@@ -14,25 +14,34 @@ output:
 ---
 
 # Readme
-Includes analysis of group differences in  \
-1) positive affect to rewards  and setbacks \
-2) frustration \
-3) motivation \ 
-4) perceived control \
-5) perceived reinforcement \
 
-For perceived effort, see separate script "ECA_effects_on_perceived_effort.Rmd"
+First, we examined relationships between self-reported variables in a correlation table with the entire sample. 
+Next, examined influence of potential covariates (age, sex, motor skills, reinforcement rate) on self-reported variables in the comparison sample only (N = 33). Then, we tested the role of cumulative ECA score on self-reported variables, controlling for relevant covariates. 
+
 
 ```{r, include = F, warnings = F, echo=FALSE, message = F}
 source("../../../0_R_analysis_setup_file.R")
 ```
 
-
+# load and clean data
 ```{r}
 # load all data with PCA added!
-load("data/all_pacct_effort_data_with_PCA.rda")
+load("../data/all_pacct_effort_data_with_PCA.rda")
 ```
 
+ data cleaning 
+```{r}
+
+# add difference score
+beh_scan_ECA_wide <- beh_scan_ECA_wide %>%
+  mutate(diff_pos_affect = win_feeling - lose_feeling)
+
+# make comparison subset
+beh_scan_comps_wide <- beh_scan_ECA_wide %>%
+  filter(GROUP_ECA == "COMP")
+nrow(beh_scan_comps_wide) # there are only 33 comps
+
+```
 
 # descriptives 
 ## check correlations
@@ -43,7 +52,7 @@ frustated correlated with perceived reinforce & age
 ```{r}
 self_report_cor_df <- beh_scan_ECA_wide %>% 
   dplyr::select(PC1_log, prop_hard_choices, 
-        AGE.x, perceived_control, perceived_effort_ave, 
+        AGE, perceived_control, perceived_effort_ave, 
          median_motor_RT_ave,
          perceived_reinforce, Reinforce_rate,
          lose_feeling, win_feeling, 
@@ -51,7 +60,7 @@ self_report_cor_df <- beh_scan_ECA_wide %>%
          fun, sleepy) %>%
   # reformatting for future table/figure use.
   rename('Prop Hard Choices' = prop_hard_choices, 
-          'Age (years)' = AGE.x, 
+          'Age (years)' = AGE, 
          'ECA score' = PC1_log, 
          'Affect to setbacks' = lose_feeling, 
          'Affect to rewards' = win_feeling, 
@@ -65,7 +74,7 @@ self_report_cor_df <- beh_scan_ECA_wide %>%
          'Amount of Fun' = fun, 
          'Sleepiness' = sleepy) 
 # save to make table later.
-save(self_report_cor_df, file = "tables/corr_table_self_report_data.Rdata")
+save(self_report_cor_df, file = "../tables/corr_table_self_report_data.Rdata")
 
 ```
 
@@ -79,221 +88,167 @@ var_cor <- self_report_cor_df %>%
 corrplot(var_cor$r, method = "color", type = "lower")
 
 # save plot
-png("figures/self_report_ECA/self_report_variables_corrplot.png")
+png("../figures/self_report/self_report_variables_corrplot.png", res = 300, units = "in",  height = 6, width = 6)
 corrplot(var_cor$r, method = "color", type = "lower")
 dev.off()
 ```
 
-# positive/ negative affect
 
-```{r tre}
+# Percieved Effort
+## make a wide data version with perceived effort and motor skills.
+```{r}
 # make long version of perceived effort data
-pos_affect_df <- beh_scan_ECA_wide %>% 
-  gather(key = "condition", value = "positive_affect", 
-          win_feeling,lose_feeling) %>%
-  mutate(condition = as.factor(ifelse(condition == "win_feeling", 
-                                      "Rewards", "Setbacks"))) %>%
-  dplyr::select(SUBJECTID, GROUP_ECA, PC1_log, SEX.c, AGE.c,  positive_affect, condition, 
-         setback_Amyg, reward_Amyg, setback_VS, reward_VS, 
-         perceived_effort_ave, Reinforce_rate.c, perceived_reinforce,
-         perceived_control, median_motor_RT_ave) %>%
-  filter(!is.na(positive_affect) & !is.na(condition) & !is.na(AGE.c) & !is.na(SEX.c)) %>%
-  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+perceived_df <- beh_scan_ECA_wide %>% 
+  gather(key = "condition", value = "perceived_effort_rating", 
+         hard_effort_perceived, easy_effort_perceived) %>%
+  mutate(condition = as.factor(ifelse(condition == "hard_effort_perceived", 
+                                      "Hard", "Easy"))) %>%
+      mutate( motor_speed_by_condition = ifelse(condition == "Easy", median_motor_RT_easy, median_motor_RT_hard), 
+              diff_pos_affect = win_feeling - lose_feeling, 
+             GROUP_ECA = as.factor(GROUP_ECA)) %>%
+  filter(!is.na(perceived_effort_rating))
 ```
 
-## group x condition: SIG
-controlling for all relevant variables !
-```{r ert}
-pos_affect_mod_g <- lmer(positive_affect ~ condition * GROUP_ECA + AGE.c + SEX.c + 
-                           #perceived_effort_ave + perceived_reinforce + perceived_control + 
-                           #Reinforce_rate.c + median_motor_RT_ave + 
-                          (1 | SUBJECTID),
-   data = pos_affect_df)
-summary(pos_affect_mod_g)
-```
 
-## PC1 x condition : SIG 
+## COMP main effects of condition.
 ```{r}
-pos_affect_mod_PC1 <- lmer(positive_affect ~ condition * PC1_log + AGE.c + SEX.c +
-                           #perceived_effort_ave + perceived_reinforce + perceived_control + 
-                           #Reinforce_rate.c + median_motor_RT_ave + 
-                          (1 | SUBJECTID),
-   data = pos_affect_df)
-
-summary(pos_affect_mod_PC1)
+perceived_effort_mod_comp <- lmer(perceived_effort_rating ~ condition + AGE.c + SEX.c + 
+                            Reinforce_rate.c + median_motor_RT_ave + 
+                               (1 | SUBJECTID), 
+                           data = filter(perceived_df, GROUP_ECA == "COMP"))
+summary(perceived_effort_mod_comp)
 ```
 
-## plot of group effect
+## comp: no age x condition interaction
+```{r}
+perceived_effort_mod_comp <- lmer(perceived_effort_rating ~ condition * AGE.c + SEX.c + 
+                            Reinforce_rate.c + median_motor_RT_ave + 
+                               (1 | SUBJECTID), 
+                           data = filter(perceived_df, GROUP_ECA == "COMP"))
+summary(perceived_effort_mod_comp)
+```
+
+
+
+### plot effect of condition
 ```{r}
 # get effect  df tidy
-affect_effect <-  as.data.frame(effect("condition:GROUP_ECA", pos_affect_mod_g, confint=TRUE))
+effort_effect <-  as.data.frame(effect("condition", perceived_effort_mod_comp, confint=TRUE))
 
-plot_effect <- ggplot(affect_effect,aes(x = GROUP_ECA, y = fit)) +
- geom_point(size = 3, color = "black") + theme_classic() + 
+plot_effect <- ggplot(effort_effect,aes(x = condition, y = fit)) +
+ geom_point(size = 3,stat = "identity", position=position_dodge()) + theme_classic() + 
   geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
-  geom_jitter(data = pos_affect_df,  aes(x = GROUP_ECA, y = positive_affect),
-              width = 0.2, height = 0.05, pch = 21,
-             alpha = 0.2, fill = dark_blue) +
-   theme(legend.position = "none") + facet_grid(~condition) +
-  theme_classic() + ylab("Positive Affect") + coord_cartesian(ylim=c(1,4)) +
-  xlab ("GROUP") + theme(legend.position = "none")
+  geom_jitter(data = filter(perceived_df, GROUP_ECA == "COMP"), aes(x = condition, y = perceived_effort_rating),
+       width = 0.1, height = 0.1, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+  theme_classic() + ylab("Perceived Effort") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("condition") + theme(legend.position = "none") 
 plot_effect
 
-ggsave(plot_effect, file = "figures/self_report_ECA/positive_affect_by_group.png", width = 6, height = 4)
+ggsave(plot_effect, file = "../figures/self_report/perceived_effort_comp_by_condition.png", width = 6, height = 4)
 
 ```
 
 
-## plot of cumulative ECA effect
+
+## ECA group effects 
+main effect SIG, no interaction with condition or age
+including/not including these covariates does not make a difference! 
+```{r}
+perceived_effort_mod_g <- lmer(perceived_effort_rating ~ condition + GROUP_ECA + AGE.c + SEX.c + 
+                            Reinforce_rate.c + median_motor_RT_ave + 
+                               (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod_g)
+
+
+perceived_effort_mod_cxg <- lmer(perceived_effort_rating ~ condition *GROUP_ECA + AGE.c + SEX.c + 
+                            Reinforce_rate.c + median_motor_RT_ave + 
+                               (1 | SUBJECTID),  data = perceived_df)
+summary(perceived_effort_mod_cxg)
+```
+
+
+### plot effect of GROUP
 ```{r}
 # get effect  df tidy
-affect_effect <-  as.data.frame(effect("condition:PC1_log", pos_affect_mod_PC1, confint=TRUE))
+effort_effect <-  as.data.frame(effect("condition:GROUP_ECA", perceived_effort_mod_g, confint=TRUE))
 
-plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
- geom_line(color = dark_blue) + theme_classic() + 
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
-  geom_jitter(data = pos_affect_df,  aes(x = PC1_log, y = positive_affect),
-              width = 0.2, height = 0.05, pch = 21,
-             alpha = 0.2, fill = dark_blue) +
-   theme(legend.position = "none") + facet_grid(~condition) +
-  theme_classic() + ylab("Positive Affect") + coord_cartesian(ylim=c(1,4)) +
-  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect <- ggplot(effort_effect,aes(x = GROUP_ECA, y = fit)) +
+ geom_point(size = 3,stat = "identity", position=position_dodge()) + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_jitter(data = perceived_df, aes(x = GROUP_ECA, y = perceived_effort_rating),
+       width = 0.1, height = 0.1, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+  theme_classic() + ylab("Perceived Effort") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("GROUP") + theme(legend.position = "none") + facet_grid(~condition)
 plot_effect
 
-ggsave(plot_effect, file = "figures/self_report_ECA/positive_affect_by_PC1.png", width = 6, height = 4)
+ggsave(plot_effect, file = "../figures/self_report/perceived_effort_by_GROUP.png", width = 4, height = 4)
 
 ```
 
 
-# Frustration 
-because positive-negative affect is significant, let's account for it... 
-make a difference scores, since that's what varies by ECA.
+## cumulative ECA effects
+main effect, no interaction with condition.
 ```{r}
-beh_scan_ECA_wide$diff_pos_affect <- beh_scan_ECA_wide$win_feeling - beh_scan_ECA_wide$lose_feeling
+perceived_effort_mod_PC1 <- lmer(perceived_effort_rating ~ condition + PC1_log + AGE.c + SEX.c + 
+                            Reinforce_rate.c + median_motor_RT_ave + 
+                               (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod_PC1)
+
+perceived_effort_mod_cxPC1 <- lmer(perceived_effort_rating ~ condition *PC1_log + AGE.c + SEX.c + 
+                            Reinforce_rate.c + median_motor_RT_ave + 
+                             (1 | SUBJECTID), 
+                           data = perceived_df)
+summary(perceived_effort_mod_cxPC1)
 
 ```
 
 
-## ECA group effect on frustration: NS
-perceived reinforcement is significant, but only when yoou also include motor speed....
 ```{r}
-frust_mod1_g <- lm(frustrated ~ GROUP_ECA + AGE.c  + SEX.c  + 
-                     perceived_reinforce +
-                    # diff_pos_affect + perceived_effort_ave  +  perceived_control + perceived_control +
-                      median_motor_RT_ave, #+ Reinforce_rate,
-                 data = beh_scan_ECA_wide)
-summary(frust_mod1_g)
-```
+# get effect  df tidy
+effort_effect <-  as.data.frame(effect("condition:PC1_log", perceived_effort_mod_PC1, confint=TRUE))
 
-## PC1 effect on frustration : NS
-```{r}
-frust_mod1_PC1 <- lm(frustrated ~ PC1_log + AGE.c  + SEX.c +
-                     perceived_reinforce +
-                    # diff_pos_affect + perceived_effort_ave  +  perceived_control + perceived_control +
-                      median_motor_RT_ave, #+ Reinforce_rate,
-                 data = beh_scan_ECA_wide)
-summary(frust_mod1_PC1)
-```
-
-
-# Motivation 
-## Group effect on motivation: SIG 
-only when account for  effects of perceived control and motor speed! 
-HUGE EFFECT OF PERCEIVED CONTROL. 
-```{r}
-motivate_mod1_g <- lm(motivated ~ GROUP_ECA + AGE.c  + SEX.c  +
-                        perceived_control  +
-                     #perceived_effort_ave  + perceived_reinforce +   diff_pos_affect +
-                       median_motor_RT_ave, # + Reinforce_rate,
-                 data = beh_scan_ECA_wide)
-summary(motivate_mod1_g)
-```
-
-### PC1 effect on motivation: SIG when accounting for perceived control and motor speed! 
-```{r}
-motivate_mod1_PC1 <- lm(motivated ~  PC1_log +  AGE.c  + SEX.c + 
-                        perceived_control  +
-                     #perceived_effort_ave  + perceived_reinforce +   diff_pos_affect +
-                       median_motor_RT_ave, # + Reinforce_rate,
-                 data = beh_scan_ECA_wide)
-summary(motivate_mod1_PC1)
-
-```
-
-```{r}
-affect_effect <-  as.data.frame(effect("PC1_log", motivate_mod1_PC1, confint=TRUE))
-
-plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
- geom_line(color = dark_blue) + theme_classic() + 
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
-  geom_jitter(data = beh_scan_ECA_wide,  aes(x = PC1_log, y = motivated),
-              width = 0.2, height = 0.05, pch = 21,
-             alpha = 0.2, fill = dark_blue) +
-   theme(legend.position = "none") + 
-  theme_classic() + ylab("Self-reported motivation") + #coord_cartesian(ylim=c(1,3)) +
-  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect <- ggplot(effort_effect,aes(x = PC1_log, y = fit)) +
+ geom_line() + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.25, fill = dark_blue) +
+  geom_jitter(data = perceived_df, aes(x = PC1_log, y = perceived_effort_rating),
+       width = 0.2, height = 0.1, pch = 21,
+             alpha = 0.3, fill = dark_blue) +
+  theme_classic() + ylab("Perceived effort") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Cumulative ECA Score") + theme(legend.position = "none") + facet_grid(~condition)
 plot_effect
 
-ggsave(plot_effect, file = "figures/self_report_ECA/motivation_by_PC1.png", width = 6, height = 4)
+ggsave(plot_effect, file = "../figures/self_report/perceived_effort_by_PC1_log.png", width = 6, height = 4)
 ```
 
-
-# Fun 
-## Group effect on fun: NS
-significant age effect, perceived contrrol, perceived reinforcementt.
-```{r}
-fun_mod1_g <- lm(fun ~ GROUP_ECA + AGE.c  + SEX.c  + 
-                   perceived_reinforce + perceived_control +
-                    # perceived_effort_ave + + diff_pos_affect +
-                   Reinforce_rate, #+ median_motor_RT_ave, 
-                 data = beh_scan_ECA_wide)
-summary(fun_mod1_g)
-```
-
-## PC1 effect on fun: NS
-```{r}
-fun_mod1_PC1 <- lm(fun ~  PC1_log +  AGE.c  + SEX.c  + 
-                   perceived_reinforce + perceived_control +
-                    # perceived_effort_ave + + diff_pos_affect +
-                   Reinforce_rate, #+ median_motor_RT_ave, 
-                 data = beh_scan_ECA_wide)
-summary(fun_mod1_PC1)
-```
-
-# perceived control 
-## Group effect on perceived control: NS
-```{r}
-control_mod1_g <- lm(perceived_control ~ GROUP_ECA +  AGE.c  + SEX.c  + diff_pos_affect, # +
-                   #  perceived_effort_ave + perceived_reinforce + Reinforce_rate +
-                    #   median_motor_RT_ave, 
-                 data = beh_scan_ECA_wide)
-summary(control_mod1_g)
-```
-
-### PC1 effect on perceived control: NS
-huge effect of positive affect. 
-```{r}
-control_mod1_PC1 <- lm(perceived_control ~  PC1_log + AGE.c  + SEX.c  + diff_pos_affect, # +
-                   #  perceived_effort_ave + perceived_reinforce + Reinforce_rate +
-                    #   median_motor_RT_ave, 
-                 data = beh_scan_ECA_wide)
-summary(control_mod1_PC1)
-```
 
 # Perceived reinforcement
-## Group effect on perceived reinforcemennt: SIG
-when conntrolling for actual reinforce rate and motor speed
+
+## COMPS: main effect of actual reinforcement rate. 
+```{r}
+perceived_reinforce_mod1_comps <- lm(perceived_reinforce ~ 
+                                   AGE.c  + SEX.c  + Reinforce_rate + 
+                      median_motor_RT_ave, 
+                 data = beh_scan_comps_wide)
+summary(perceived_reinforce_mod1_comps)
+```
+
+
+## Group effect on perceived reinforcemennt: NS
+when using the appropriate model...
 ```{r}
 perceived_reinforce_mod1_g <- lm(perceived_reinforce ~ GROUP_ECA +  
                                    AGE.c  + SEX.c  + Reinforce_rate +
-                   #  perceived_effort_ave + perceived_control + #  diff_pos_affect +
                       median_motor_RT_ave, 
                  data = beh_scan_ECA_wide)
 summary(perceived_reinforce_mod1_g)
 ```
 
 
-## plot of group effect
+plot of group effect
 ```{r }
 # get effect  df tidy
 affect_effect <-  as.data.frame(effect("GROUP_ECA", perceived_reinforce_mod1_g, confint=TRUE))
@@ -309,16 +264,14 @@ plot_effect <- ggplot(affect_effect,aes(x = GROUP_ECA, y = fit)) +
   xlab ("GROUP") + theme(legend.position = "none")
 plot_effect
 
-ggsave(plot_effect, file = "figures/self_report_ECA/perceived_reinforce_by_group.png", width = 2.5, height = 4)
+ggsave(plot_effect, file = "../figures/self_report/perceived_reinforce_by_group.png", width = 2.5, height = 4)
 
 ```
 
-## PC1 effect on perceived reinforcement: SIG
-unless you include perceived effrt, then it's a trend. 
+## PC1 effect on perceived reinforcement: SIG. 
 ```{r}
 perceived_reinforce_mod1_PC1 <- lm(perceived_reinforce ~  PC1_log + 
                                    AGE.c  + SEX.c  + Reinforce_rate +
-                   #  perceived_effort_ave + perceived_control + #  diff_pos_affect +
                     median_motor_RT_ave, 
                  data = beh_scan_ECA_wide)
 summary(perceived_reinforce_mod1_PC1)
@@ -338,25 +291,429 @@ plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
               width = 0.2, height = 0.05, pch = 21,
              alpha = 0.2, fill = dark_blue) +
    theme(legend.position = "none") + 
-  theme_classic() + ylab("Perceived reinforcement") + coord_cartesian(ylim=c(1,3)) +
+  theme_classic() + ylab("Fewer setbacks <---------> More setbacks") + coord_cartesian(ylim=c(1,3)) +
   xlab ("Cumulative ECA score") + theme(legend.position = "none")
 plot_effect
 
-ggsave(plot_effect, file = "figures/self_report_ECA/perceived_reinforce_by_PC1.png", width = 6, height = 4)
+ggsave(plot_effect, file = "../figures/self_report/perceived_reinforce_by_PC1.png", width = 6, height = 4)
 
 ```
 
 
-### Group effect on actual reinforcement rate rate: no, good because random! 
+## Group effect on actual reinforcement rate rate: no, good because random! 
 ```{r}
 reinforce_mod1_g <- lm(Reinforce_rate ~ GROUP_ECA ,
                  data = beh_scan_ECA_wide)
 summary(reinforce_mod1_g)
 ```
 
-### PC1 effect on actual reinforcement: no.
+## PC1 effect on actual reinforcement: no.
 ```{r}
 reinforce_mod1_PC1 <- lm(Reinforce_rate ~  PC1_log ,
                  data = beh_scan_ECA_wide)
 summary(reinforce_mod1_PC1)
 ```
+
+
+# perceived control 
+
+## COMPS: no effect of age, motor skills, reinforcement on perceived control
+```{r}
+control_mod1_comps <- lm(perceived_control ~  AGE.c  + SEX.c + 
+                      Reinforce_rate + perceived_reinforce + 
+                       median_motor_RT_ave, 
+                 data = beh_scan_comps_wide)
+summary(control_mod1_comps)
+```
+
+## Group effect on perceived control: NS
+```{r}
+control_mod1_g <- lm(perceived_control ~ GROUP_ECA +  AGE.c  + SEX.c  +
+                  Reinforce_rate +
+                       median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(control_mod1_g)
+```
+
+### PC1 effect on perceived control: NS
+```{r}
+control_mod1_PC1 <- lm(perceived_control ~  PC1_log +  AGE.c  + SEX.c  +
+                      Reinforce_rate + 
+                       median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(control_mod1_PC1)
+```
+
+```{r}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("PC1_log", control_mod1_PC1, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data = beh_scan_ECA_wide,  aes(x = PC1_log, y = perceived_control),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + 
+  theme_classic() + ylab("Less Control <--------> More Control") + coord_cartesian(ylim=c(1,3)) +
+  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/perceived_control_by_PC1.png", width = 6, height = 4)
+
+```
+
+
+
+# positive/ negative affect
+
+```{r}
+
+# make long version of perceived effort data
+pos_affect_df <- beh_scan_ECA_wide %>% 
+  gather(key = "condition", value = "positive_affect", 
+          win_feeling,lose_feeling) %>%
+  mutate(condition = as.factor(ifelse(condition == "win_feeling", 
+                                      "Rewards", "Setbacks"))) %>%
+  dplyr::select(SUBJECTID, GROUP_ECA, PC1_log, SEX.c, AGE.c,  positive_affect, condition, 
+         setback_Amyg, reward_Amyg, setback_VS, reward_VS, 
+         perceived_effort_ave, Reinforce_rate.c, perceived_reinforce,
+         perceived_control, median_motor_RT_ave) %>%
+  filter(!is.na(positive_affect) & !is.na(condition) & !is.na(AGE.c) & !is.na(SEX.c)) %>%
+  mutate(GROUP_ECA = as.factor(GROUP_ECA))
+
+# make comparison subset
+pos_affect_comps <- pos_affect_df %>%
+  filter(GROUP_ECA == "COMP")
+nrow(pos_affect_comps)
+length(unique(pos_affect_comps$SUBJECTID))
+
+
+```
+
+
+## COMPS: Age x condition: SIG
+`
+```{r}
+
+pos_affect_mod_comps <- lmer(positive_affect ~ condition * AGE.c + SEX.c + 
+                           Reinforce_rate.c + median_motor_RT_ave + 
+                          (1 | SUBJECTID),
+   data = pos_affect_comps)
+summary(pos_affect_mod_comps)
+
+```
+
+```{r}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("condition:AGE.c", pos_affect_mod_comps, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = AGE.c, y = fit)) +
+ geom_line(size = 1, color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, fill = dark_blue) +
+  geom_jitter(data = pos_affect_comps,  aes(x = AGE.c, y = positive_affect),
+              width = 0.2, height = 0.1, pch = 21,
+             alpha = 0.2, fill = dark_blue) + facet_grid(~ condition) +
+   theme(legend.position = "none") + 
+  theme_classic() + ylab("Self-reported Positive Affect") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Age (mean-centered)") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/positive_affect_COMPS.png", units = "in", width = 6, height = 4)
+
+```
+
+## group x condition: SIG
+controlling for all relevant variables !
+```{r ert}
+pos_affect_mod_g <- lmer(positive_affect ~ condition * GROUP_ECA + AGE.c + SEX.c + 
+                           #condition * AGE.c +
+                           Reinforce_rate.c + median_motor_RT_ave + 
+                          (1 | SUBJECTID),
+                          
+                          data = pos_affect_df)
+summary(pos_affect_mod_g)
+```
+
+## PC1 x condition : SIG 
+```{r}
+pos_affect_mod_PC1 <- lmer(positive_affect ~ condition * PC1_log + AGE.c + SEX.c +
+                            # condition * AGE.c +
+                          Reinforce_rate.c + median_motor_RT_ave + 
+                          (1 | SUBJECTID),
+                          data = pos_affect_df)
+
+summary(pos_affect_mod_PC1)
+```
+
+plot of group effect
+```{r}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("condition:GROUP_ECA", pos_affect_mod_g, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect,aes(x = GROUP_ECA, y = fit)) +
+ geom_point(size = 3, color = "black") + theme_classic() + 
+  geom_errorbar(aes(ymin = lower, ymax = upper),position=position_dodge(.9), width = 0.25) +
+  geom_jitter(data = pos_affect_df,  aes(x = GROUP_ECA, y = positive_affect),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + facet_grid(~condition) +
+  theme_classic() + ylab("Self-reported Positive Affect") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("GROUP") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/positive_affect_by_group.png", width = 6, height = 4)
+
+```
+
+
+plot of cumulative ECA effect
+```{r}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("condition:PC1_log", pos_affect_mod_PC1, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data = pos_affect_df,  aes(x = PC1_log, y = positive_affect),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + facet_grid(~condition) +
+  theme_classic() + ylab("Positive Affect") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/positive_affect_by_PC1.png", width = 6, height = 4)
+
+```
+
+## difference in reward-setback
+
+## COMPS: Age effect sig
+```{r}
+diff_affect_mod_comps <- lm(diff_pos_affect ~ AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+   data = beh_scan_comps_wide)
+
+summary(diff_affect_mod_comps)
+```
+
+
+## GROUP on difference scores: SIG
+```{r}
+diff_affect_mod_group <- lm(diff_pos_affect ~ GROUP_ECA + AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+   data = beh_scan_ECA_wide)
+
+summary(diff_affect_mod_group)
+```
+
+## PC1 on difference scores: trend. 
+```{r}
+diff_affect_mod_PC1 <- lm(diff_pos_affect ~ PC1_log + AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+   data = beh_scan_ECA_wide)
+
+summary(diff_affect_mod_PC1)
+```
+
+
+```{r}
+# get effect  df tidy
+affect_effect <-  as.data.frame(effect("PC1_log", diff_affect_mod_PC1, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data =  beh_scan_ECA_wide, aes(x = PC1_log, y = diff_pos_affect),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + #facet_grid(~condition) +
+  theme_classic() + ylab("Difference in Positive Affect (Reward-Setback)") + coord_cartesian(ylim=c(1,4)) +
+  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/diff_pos_affect_by_PC1.png", width = 6, height = 4)
+```
+
+
+# Motivation 
+
+## Comps:
+```{r}
+motivate_mod1_comps <- lm(motivated ~ AGE.c + SEX.c + perceived_control + 
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_comps_wide)
+summary(motivate_mod1_comps)
+```
+
+
+```{r}
+affect_effect <-  as.data.frame(effect("perceived_control", motivate_mod1_comps, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = perceived_control, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data = beh_scan_comps_wide,  aes(x = perceived_control, y = motivated),
+              width = 0.1, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + 
+  theme_classic() + ylab("Self-reported motivation") + #coord_cartesian(ylim=c(1,3)) +
+  xlab ("Perceived Control") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/motivation_COMPS_by_perceived_control.png", width = 6, height = 4)
+```
+
+
+## Group effect on motivation: SIG 
+only when account for  effects of perceived control and motor speed! 
+HUGE EFFECT OF PERCEIVED CONTROL. 
+```{r}
+motivate_mod1_g <- lm(motivated ~ GROUP_ECA + AGE.c + SEX.c + perceived_control + 
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(motivate_mod1_g)
+```
+
+### PC1 effect on motivation: SIG when accounting for perceived control and motor speed! 
+```{r}
+motivate_mod1_PC1 <- lm(motivated ~  PC1_log +  AGE.c + SEX.c + perceived_control + 
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(motivate_mod1_PC1)
+
+```
+
+```{r}
+affect_effect <-  as.data.frame(effect("PC1_log", motivate_mod1_PC1, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data = beh_scan_ECA_wide,  aes(x = PC1_log, y = motivated),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + 
+  theme_classic() + ylab("Self-reported motivation") + #coord_cartesian(ylim=c(1,3)) +
+  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/motivation_by_PC1.png", width = 6, height = 4)
+```
+
+
+# Frustration 
+
+## COMPS: motor, but not age effects
+
+```{r}
+frust_mod1_comps <- lm(frustrated ~ AGE.c  + SEX.c  + 
+                      median_motor_RT_ave + Reinforce_rate,
+                 data = beh_scan_comps_wide)
+summary(frust_mod1_comps)
+```
+
+```{r}
+affect_effect <-  as.data.frame(effect("median_motor_RT_ave", frust_mod1_comps, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = median_motor_RT_ave, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data = beh_scan_comps_wide,  aes(x = median_motor_RT_ave, y = frustrated),
+              width = 0, height = 0, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + xlim(0.1, 0.3) +
+  theme_classic() + ylab("Self-reported frustration") + #coord_cartesian(ylim=c(1,3)) +
+  xlab ("Motor Speed") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/frustrated_COMPS_by_motor_speed.png", width = 6, height = 4)
+```
+
+## ECA group effect on frustration: NS
+```{r}
+frust_mod1_g <- lm(frustrated ~ GROUP_ECA + AGE.c + SEX.c + perceived_control +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(frust_mod1_g)
+```
+
+## PC1 effect on frustration : NS
+```{r}
+frust_mod1_PC1 <- lm(frustrated ~ PC1_log + AGE.c + SEX.c + perceived_control + 
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(frust_mod1_PC1)
+```
+
+```{r}
+affect_effect <-  as.data.frame(effect("PC1_log", frust_mod1_PC1, confint=TRUE))
+
+plot_effect <- ggplot(affect_effect, aes(x = PC1_log, y = fit)) +
+ geom_line(color = dark_blue) + theme_classic() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = dark_blue, alpha = 0.3) +
+  geom_jitter(data = beh_scan_ECA_wide,  aes(x = PC1_log, y = frustrated),
+              width = 0.2, height = 0.05, pch = 21,
+             alpha = 0.2, fill = dark_blue) +
+   theme(legend.position = "none") + 
+  theme_classic() + ylab("Self-reported frustration") + #coord_cartesian(ylim=c(1,3)) +
+  xlab ("Cumulative ECA score") + theme(legend.position = "none")
+plot_effect
+
+ggsave(plot_effect, file = "../figures/self_report/frustrated_by_PC1.png", width = 6, height = 4)
+```
+
+# Fun 
+
+## COMP:main effects of nothing!!! 
+```{r}
+fun_mod1_comp <- lm(fun ~ AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_comps_wide)
+summary(fun_mod1_comp)
+```
+
+## Group effects on fun: NS
+```{r}
+fun_mod1_g <- lm(fun ~ GROUP_ECA + AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(fun_mod1_g)
+```
+
+## PC1 effects on fun: NS
+```{r}
+fun_mod1_g <- lm(fun ~ PC1_log + AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(fun_mod1_g)
+```
+
+
+# Sleepy 
+
+## COMP: main effects of nothing!!! 
+```{r}
+sleep_mod1_comp <- lm(sleepy ~ AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_comps_wide)
+summary(sleep_mod1_comp)
+```
+
+## Group effects on sleepiness: NS
+```{r}
+sleep_mod1_g <- lm(sleepy ~ GROUP_ECA + AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(sleep_mod1_g)
+```
+
+## PC1 effects on sleepiness: NS
+```{r}
+sleep_mod1_PC1 <- lm(sleepy ~ PC1_log + AGE.c + SEX.c +
+                          Reinforce_rate.c + median_motor_RT_ave, 
+                 data = beh_scan_ECA_wide)
+summary(sleep_mod1_PC1)
+```
+
