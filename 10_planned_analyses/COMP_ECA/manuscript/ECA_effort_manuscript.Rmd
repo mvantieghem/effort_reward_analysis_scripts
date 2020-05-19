@@ -107,7 +107,7 @@ fMRI procedure:
 Participants completed 2 runs of a 5 minute (21 trial) event-related fMRI task. Each trial consisted of 3 components: Choice, Effort, and Feedback (Figure 1). During the “choice” phase of the task (3 seconds), participants are instructed to choose between a hard task (6 button presses with ring finger) with a higher reward payout (stack of gold tokens) and an easy task (3 button presses with thumb) with a lower reward payout (fewer gold tokens). During the “effort” phase, participants had 3 seconds to complete the required button presses for the task (Figure 1). During the “feedback” phase (1.5s), the reward or setback was presented on the screen (50% positive / negative reinforcement). Rewards consisted of gold coins, and setbacks consisted of gold coins with a red sign overlayed (indicating no reward). Feedback was randomized in psychopy, such that each trial had a 50% chance of reward or setback (winning or not winning coins) regardless of which choice they made (hard vs. easy). If participants did not complete the required number of button-presses in the allotted time frame (incomplete effort trials), they received “too slow” feedback. 
 
 
-(ref:EffortTaskFigCaption) . Effort Reward fMRI task design. 
+(ref:EffortTaskFigCaption). Effort Reward fMRI task design. 
 
 ```{r effortrewardtask, include = T, cache = T, fig.cap = "(ref:EffortTaskFigCaption)", fig.align = "center"}
 # all of you rplots need to be converted to png!! 
@@ -250,8 +250,7 @@ stuff_corr <- self_report_cor_df %>%
   correlation
 cor_table <- summary(stuff_corr)
 
-apa_table(cor_table, caption = "Table 2. Correlation table for self-report data and ECA scores.", 
-          font_size = 'tiny') 
+apa_table(cor_table, caption = "Table 2. Correlation table for self-report data and ECA scores.", font_size = 'tiny') 
 ```
 
 
