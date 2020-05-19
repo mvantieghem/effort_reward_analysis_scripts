@@ -18,7 +18,9 @@ choice_mod1_brms_full <- brm(Effort_Choice.n ~ GROUP_ECA.x +
                                perceived_reinforce + perceived_control + 
                                lose_feeling + win_feeling + 
                                frustrated + motivated + 
-                               perceived_effort_ave.c +  median_motor_RT_ave +
+                               perceived_effort_ave.c +
+                               # CONFOUNDS
+                               median_motor_RT_ave +
                                AGE.c + SEX.c + Reinforce_rate.c + Trial_Number.c +
                                (1 + Trial_Number.c | SUBJECTID), 
                              family = bernoulli(link = "logit"),
