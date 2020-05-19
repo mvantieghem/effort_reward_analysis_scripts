@@ -1,0 +1,205 @@
+---
+title: "The influence of early caregiving adversity on effort-based persistence"
+author: 
+- address: '[Anonymized Corresponding Author Address]'
+  affiliation: a
+  corresponding: yes
+  email: '[Anonymized Author Email]'
+  name: '[Anonymous Author(s)]'
+affiliation:
+- id: a
+  institution: '[Anonymized Institution(s)]'
+output:
+  papaja::apa6_word: default
+  word_document: default
+classoption: man
+documentclass: apa6
+draft: no
+figurelist: no
+floatsintext: yes
+footnotelist: no
+header-includes:
+- \usepackage{setspace}
+- \usepackage{makecell}
+- \raggedbottom
+keywords: stuff
+linenumbers: no
+mask: no
+authornote: |
+  [Anonymized Corresponding Author Address(es)]
+  Declarations of interest: none
+shorttitle: Early adversity and effort-based persistence
+tablelist: no
+abstract: "Abstract goes here \n"
+wordcount: '4,967'
+---
+
+
+```{r setup, warning = FALSE, message = FALSE}
+
+# Set knitr options
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, include = FALSE, message = FALSE, cache = TRUE)
+#knitr::opts_knit$set(root.dir = normalizePath('../scripts/'))
+
+source("../../../0_R_analysis_setup_file.R", echo=F)
+
+# If sourcing from an .Rmd file, run this instead: 
+ksource <- function(x, ...) {
+  library(knitr)
+  source(purl(x, output = tempfile()), ...)
+}
+
+```
+
+# 1. Introduction
+
+# 2. Methods 
+
+```{r, include = T, cache = T, fig.cap = ". fMRI Task design for Effort Reward task.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("images/Effort_task_Figure.002.png")
+```
+
+
+# 3. Results 
+
+## 3.1 Phenotyping early caregiving adversities 
+
+```{r, include = TRUE, fig.cap = ". Proportion variance explained by each principal component for PCA of early caregiving adversity.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/PCA/screePropVariancePCA_MatchBoostrap.png")
+```
+
+
+```{r, include = TRUE, fig.cap = ". Loadings of each caregiving adversity variable on the first 5 Principle Components.", fig.align = "left"}
+knitr::include_graphics("../figures/PCA/pcaLoadingFullNotAbsoluteValued.png")
+```
+
+## 3.2. Self-report measures 
+
+## Analysis Plan 
+
+First, we examined relationships between self-reported variables in a correlation table with the entire sample. 
+Next, examined influence of potential covariates (age, sex, motor skills, reinforcement rate) on self-reported variables in the comparison sample only (N = 33). Then, we tested the role of cumulative ECA score on self-reported variables, controlling for relevant covariates. 
+
+## Descriptives
+
+```{r, cache = TRUE ,include = T, results = 'asis'}
+load("../tables/corr_table_self_report_data.Rdata")
+# beautiful correlation table thanks to apaTable package! 
+#apa.cor.table(self_report_cor_df, table.number=1)
+
+stuff_corr <- self_report_cor_df %>%
+  na.omit(.) %>%
+  correlation
+cor_table <- summary(stuff_corr)
+
+#apa_table(cor_table, caption = "Table 2. Correlation table for self-report data and ECA scores.", font_size = 'tiny') 
+```
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Correlation plot for key variables of interest."}
+
+knitr::include_graphics("../figures/self_report/self_report_variables_corrplot.png")
+
+```
+
+
+## Perceived Effort 
+
+```{r, include = TRUE, fig.cap = ". Main effect of condition on perceived effort in the comparison sample. Participants rated the hard task to be significantly more effortful than the easy task. No effects of age, sex, motor speed, or reinforcement rate on perceived effort.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/perceived_effort_comp_by_condition.png")
+```
+
+```{r, include = TRUE, fig.cap = ". Main effect of ECA scores on perceived effort. Higher cumulative ECA score is associated with greater perceived effort during the task, controlling for condition (Hard vs. easy) effects. Condition did not moderate the effect of ECA scores on perceived effort.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/perceived_effort_by_PC1_log.png")
+```
+
+
+
+## Perceived Reinforcement 
+
+
+Comparison sample: Significant effect of reinforcement rate on perceived reinforcement (setback rate).
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Main effect of ECA score on perceived reinforcement (setback rate). Participants with higher ECA scores reported greater rate of setbacks, controlling for actual reinforcement rate. There was no group difference in actual reinforcement rate.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/perceived_reinforce_by_PC1.png")
+```
+
+
+## Perceived Control 
+
+No effect of age, motor skills, or reinforcement rate on perceived control in the comparison sample. On average, participants reported having some control (1 = no control, 2 = some control, lots of control).
+
+No effect of ECA score on perceived control. 
+
+
+## 3.2.4 Positive Affect
+
+```{r , cache = TRUE, include = TRUE, fig.cap = ". Age x Condition interaction for positive affect ratings to rewards and setbacks. Increasing age is associated with reduced positive affect following setbacks. No effects of sex, motor speed, or reinforcement rate on positive affect.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/positive_affect_COMPS.png")
+```
+
+
+```{r, cache = TRUE,  include = TRUE, fig.cap = ". Group x Condition interaction for positive affect ratings to rewards and setbacks. Higher cumulative ECA scores are associated with greater positive affect following rewards, and reduced positive affect following setbacks.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/positive_affect_by_PC1.png")
+```
+
+##  Motivation
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Main effect of perceived control on motivation in comparison sample. Higher perceived control over winning coins is associated with greater motivation during the task. Trend effect of age, no effects of reinforcement rate or motor skills. ", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/motivation_COMPS_by_perceived_control.png")
+```
+
+Note: perceived control is not related to age in comparison only sample, surprisingly. BUT it is a main effect in the larger sample. example of inconsistencies. 
+
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Main effect of ECA on motivation. Higher cumulative ECA scores are associated with lower self-report motivation during the task.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/motivation_by_PC1.png")
+```
+
+
+## 3.2.6 Frustration
+
+```{r, cache = TRUE, include = TRUE, fig.cap = ". Main effect of motor speed on self-reported frustration in comparison sample. Participants with faster motor speed (median RT of finger-tapping test) reported lower levels of frustration. No effects of age, sex or reinforcement rate.", fig.align = "left"}
+# all of you rplots need to be converted to png!! 
+knitr::include_graphics("../figures/self_report/frustrated_COMPS_by_motor_speed.png")
+```
+
+No effect of ECA score on self-reported frustration during the task.
+
+
+## 3.2.6 Task engagement and fatigue 
+Comparison sample: No effects of age, sex, motor speed, or reinforcement rate on level of fun participants reported after the task.
+No effects of ECA score on self-reported fun, but there is a main effect of age in this entire sample (younger kids reported more fun).
+
+Comparison sample: Significant effect of age on participant's self-reported sleepiness during the task. Older participants reported being more sleepy.
+No effects of ECA on self-reported sleepiness.
+
+**TAKE HOME MESSAGE:** These findings suggest that ECA-related differences in perceived effort,  positive affect and perceived reinforcement are not due to differences in task engagement or fatigue.
+ 
+
+## 3.3 Behavioral measures of effort 
+
+## 3.3.1 Choice-based indices of effort allocation
+
+## 3.3.2 Motor-based indices of effort allocation 
+
+## 3.3.3 Decision-making strategies 
+
+## 3.4 Neural measures 
+
+## 3.4.1 Neural activation during choice phase 
+
+## 3.4.2 Neural activation during feedback phase 
+
+
+
