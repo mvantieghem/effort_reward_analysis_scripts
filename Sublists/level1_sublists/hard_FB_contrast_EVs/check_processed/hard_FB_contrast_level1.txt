@@ -1,0 +1,11 @@
+PA043/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA069/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA075/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA136/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA155/effort/model/lev1_run2_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA164/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA174/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA184/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA211/effort/model/lev1_run2_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA212/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz
+PA256/effort/model/lev1_run1_hard_FB_contrast_EVs.feat/stats/cope1_standard.nii.gz

@@ -1,0 +1,7 @@
+/danl/PACCT/subject_data/effort_reward/PA006/effort/BOLD/run1/PA006_task-effort-run1_bold.nii.gz
+/danl/PACCT/subject_data/effort_reward/PA006/effort/BOLD/run2/PA006_task-effort-run2_bold.nii.gz
+/danl/PACCT/subject_data/effort_reward/PA025/effort/BOLD/run1/PA025_task-effort-run1_bold.nii.gz
+/danl/PACCT/subject_data/effort_reward/PA025/effort/BOLD/run2/PA025_task-effort-run2_bold.nii.gz
+/danl/PACCT/subject_data/effort_reward/PA031/effort/BOLD/run1/PA031_task-effort-run1_bold.nii.gz
+/danl/PACCT/subject_data/effort_reward/PA031/effort/BOLD/run2/PA031_task-effort-run2_bold.nii.gz
+/danl/PACCT/subject_data/effort_reward/PA033/effort/BOLD/run1/PA033_task-effort-run1_bold.nii.gz
